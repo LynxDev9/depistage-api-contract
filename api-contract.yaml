@@ -1,0 +1,393 @@
+openapi: 3.0.3
+info:
+  title: App API
+  description: API contract for anonymous user identification and session tracking.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:4010
+    description: Prism mock server (local dev)
+  - url: https://api.yourapp.com/v1
+    description: Production
+
+tags:
+  - name: Users
+    description: Anonymous user management (device-based, no login)
+  - name: Sessions
+    description: App session tracking
+
+paths:
+
+  /users:
+    post:
+      tags: [Users]
+      summary: Register a new anonymous user
+      description: Called once on first app launch. Creates a user identified by device_uuid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+              user_type: "YOUTH"
+              age_range: "18_25"
+              gender: "MALE"
+              language: "FR"
+              fcm_token: "fcm_token_example_abc123"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                user_type: "YOUTH"
+                age_range: "18_25"
+                gender: "MALE"
+                language: "FR"
+                fcm_token: "fcm_token_example_abc123"
+                created_at: "2025-01-15T10:30:00Z"
+        '409':
+          description: User with this device_uuid already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "CONFLICT"
+                message: "A user with this device_uuid already exists."
+        '422':
+          description: Validation error (invalid enum value, missing field, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid value for field 'user_type'."
+
+  /users/{device_uuid}:
+    get:
+      tags: [Users]
+      summary: Get user profile
+      description: Returns the profile of the user identified by device_uuid.
+      parameters:
+        - $ref: '#/components/parameters/DeviceUUID'
+      responses:
+        '200':
+          description: User profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                user_type: "YOUTH"
+                age_range: "18_25"
+                gender: "MALE"
+                language: "FR"
+                fcm_token: "fcm_token_example_abc123"
+                created_at: "2025-01-15T10:30:00Z"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "No user found for this device_uuid."
+
+    patch:
+      tags: [Users]
+      summary: Update user profile
+      description: Update mutable fields — language, fcm_token, user_type, etc.
+      parameters:
+        - $ref: '#/components/parameters/DeviceUUID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+            example:
+              language: "AR"
+              fcm_token: "new_fcm_token_xyz789"
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                user_type: "YOUTH"
+                age_range: "18_25"
+                gender: "MALE"
+                language: "AR"
+                fcm_token: "new_fcm_token_xyz789"
+                created_at: "2025-01-15T10:30:00Z"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "No user found for this device_uuid."
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid value for field 'language'."
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: Start a new app session
+      description: Called each time the app is opened (foreground). Returns a session id to be used when closing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+            example:
+              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+              platform: "ANDROID"
+              app_version: "1.0.0"
+      responses:
+        '201':
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                started_at: "2025-01-15T10:30:00Z"
+                duration_sec: null
+                platform: "ANDROID"
+                app_version: "1.0.0"
+        '404':
+          description: device_uuid not registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "No user found for this device_uuid."
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid value for field 'platform'."
+
+  /sessions/{id}:
+    patch:
+      tags: [Sessions]
+      summary: End a session
+      description: Called when the app goes to background or is closed. Sends the session duration.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndSessionRequest'
+            example:
+              duration_sec: 142
+      responses:
+        '200':
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                started_at: "2025-01-15T10:30:00Z"
+                duration_sec: 142
+                platform: "ANDROID"
+                app_version: "1.0.0"
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "No session found for this id."
+
+components:
+
+  parameters:
+    DeviceUUID:
+      name: device_uuid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+
+    # ── Enums ──────────────────────────────────────────────
+
+    UserType:
+      type: string
+      enum: [YOUTH, WOMAN, KEY_POPULATION, MIGRANT, GENERAL_PUBLIC]
+
+    AgeRange:
+      type: string
+      enum: [LESS_18, 18_25, 26_35, 36_50, OVER_50]
+
+    Gender:
+      type: string
+      enum: [MALE, FEMALE, PREFER_NOT_TO_SAY]
+
+    Language:
+      type: string
+      enum: [FR, AR]
+
+    Platform:
+      type: string
+      enum: [ANDROID, IOS]
+
+    # ── User ───────────────────────────────────────────────
+
+    CreateUserRequest:
+      type: object
+      required: [device_uuid, user_type, age_range, gender, language]
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+        user_type:
+          $ref: '#/components/schemas/UserType'
+        age_range:
+          $ref: '#/components/schemas/AgeRange'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        language:
+          $ref: '#/components/schemas/Language'
+        fcm_token:
+          type: string
+          nullable: true
+
+    UpdateUserRequest:
+      type: object
+      description: All fields are optional. Send only what needs to be updated.
+      properties:
+        user_type:
+          $ref: '#/components/schemas/UserType'
+        age_range:
+          $ref: '#/components/schemas/AgeRange'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        language:
+          $ref: '#/components/schemas/Language'
+        fcm_token:
+          type: string
+          nullable: true
+
+    UserResponse:
+      type: object
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+        user_type:
+          $ref: '#/components/schemas/UserType'
+        age_range:
+          $ref: '#/components/schemas/AgeRange'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        language:
+          $ref: '#/components/schemas/Language'
+        fcm_token:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Session ────────────────────────────────────────────
+
+    CreateSessionRequest:
+      type: object
+      required: [device_uuid, platform, app_version]
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+        platform:
+          $ref: '#/components/schemas/Platform'
+        app_version:
+          type: string
+
+    EndSessionRequest:
+      type: object
+      required: [duration_sec]
+      properties:
+        duration_sec:
+          type: integer
+          minimum: 0
+
+    SessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_uuid:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        duration_sec:
+          type: integer
+          nullable: true
+        platform:
+          $ref: '#/components/schemas/Platform'
+        app_version:
+          type: string
+
+    # ── Error ──────────────────────────────────────────────
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string
+          example: "Human-readable error description."
