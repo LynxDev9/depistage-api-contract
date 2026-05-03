@@ -1,4 +1,4 @@
-# 1. Install Prism
+# 1. Install express mock server
 npm install -g @stoplight/prism-cli
 
 # 2. Run mock server
