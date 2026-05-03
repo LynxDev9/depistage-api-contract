@@ -1,7 +1,7 @@
 // routes/users.js
 
 const express = require('express');
-const { db, VALID, validate, requireFields, error } = require('../db');
+const { db, VALID, validate, validateArray, requireFields, error } = require('../db');
 
 const router = express.Router();
 
@@ -9,11 +9,14 @@ const router = express.Router();
 router.post('/', (req, res) => {
   const body = req.body;
 
-  const missing = requireFields(body, ['device_uuid', 'user_type', 'age_range', 'gender', 'family_situation', 'language']);
+  const missing = requireFields(body, ['device_uuid', 'age_range', 'gender', 'language']);
   if (missing) return error(res, 422, 'VALIDATION_ERROR', missing);
 
+  // Validate user_type as array
+  const invalidUserType = validateArray(body.user_type, VALID.user_type, 'user_type');
+  if (invalidUserType) return error(res, 422, 'VALIDATION_ERROR', invalidUserType);
+
   const invalid = validate(body, {
-    user_type:        VALID.user_type,
     age_range:        VALID.age_range,
     gender:           VALID.gender,
     family_situation: VALID.family_situation,
@@ -31,6 +34,7 @@ router.post('/', (req, res) => {
     gender:           body.gender,
     family_situation: body.family_situation,
     language:         body.language,
+    is_pregnant:      body.is_pregnant ?? null,
     fcm_token:        body.fcm_token ?? null,
     created_at:       new Date().toISOString(),
   };
@@ -52,8 +56,13 @@ router.patch('/:device_uuid', (req, res) => {
   const user = db.users.find(u => u.device_uuid === req.params.device_uuid);
   if (!user) return error(res, 404, 'NOT_FOUND', 'No user found for this device_uuid.');
 
+  // Validate user_type as array if provided
+  if (req.body.user_type !== undefined) {
+    const invalidUserType = validateArray(req.body.user_type, VALID.user_type, 'user_type');
+    if (invalidUserType) return error(res, 422, 'VALIDATION_ERROR', invalidUserType);
+  }
+
   const invalid = validate(req.body, {
-    user_type:        VALID.user_type,
     age_range:        VALID.age_range,
     gender:           VALID.gender,
     family_situation: VALID.family_situation,
@@ -61,7 +70,7 @@ router.patch('/:device_uuid', (req, res) => {
   });
   if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
 
-  const allowed = ['user_type', 'age_range', 'gender', 'family_situation', 'language', 'fcm_token'];
+  const allowed = ['user_type', 'age_range', 'gender', 'family_situation', 'language', 'is_pregnant', 'fcm_token'];
   allowed.forEach(field => {
     if (req.body[field] !== undefined) user[field] = req.body[field];
   });
