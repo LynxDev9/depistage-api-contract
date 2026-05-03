@@ -1,0 +1,11 @@
+# 1. Install Prism
+npm install -g @stoplight/prism-cli
+
+# 2. Run mock server
+prism mock api-contract.yaml
+# → http://localhost:4010 is live
+
+# 3. Test it
+curl -X POST http://localhost:4010/users \
+  -H "Content-Type: application/json" \
+  -d '{"device_uuid":"550e8400-e29b-41d4-a716-446655440000","user_type":"YOUTH","age_range":"18_25","gender":"MALE","language":"FR"}'
