@@ -9,7 +9,7 @@ const router = express.Router();
 router.post('/', (req, res) => {
   const body = req.body;
 
-  const missing = requireFields(body, ['device_uuid', 'age_range', 'gender', 'language']);
+  const missing = requireFields(body, ['device_uuid', 'user_type', 'age_range', 'gender', 'language']);
   if (missing) return error(res, 422, 'VALIDATION_ERROR', missing);
 
   // Validate user_type as array
@@ -26,6 +26,11 @@ router.post('/', (req, res) => {
 
   const exists = db.users.find(u => u.device_uuid === body.device_uuid);
   if (exists) return error(res, 409, 'CONFLICT', 'A user with this device_uuid already exists.');
+
+  // DB check constraint mimic: is_pregnant can only be set for women
+  if (body.is_pregnant !== undefined && body.is_pregnant !== null && body.gender !== 'FEMALE') {
+    return error(res, 422, 'VALIDATION_ERROR', "Field 'is_pregnant' must be null unless gender is 'FEMALE'.");
+  }
 
   const user = {
     device_uuid:      body.device_uuid,
@@ -69,6 +74,12 @@ router.patch('/:device_uuid', (req, res) => {
     language:         VALID.language,
   });
   if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
+
+  const nextGender = req.body.gender !== undefined ? req.body.gender : user.gender;
+  const nextIsPregnant = req.body.is_pregnant !== undefined ? req.body.is_pregnant : user.is_pregnant;
+  if (nextIsPregnant !== undefined && nextIsPregnant !== null && nextGender !== 'FEMALE') {
+    return error(res, 422, 'VALIDATION_ERROR', "Field 'is_pregnant' must be null unless gender is 'FEMALE'.");
+  }
 
   const allowed = ['user_type', 'age_range', 'gender', 'family_situation', 'language', 'is_pregnant', 'fcm_token'];
   allowed.forEach(field => {

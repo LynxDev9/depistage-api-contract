@@ -3,6 +3,38 @@
 const db = {
   users: [],
   sessions: [],
+  geo: {
+    regions: [
+      { RegionID: 1, Nom: 'Rabat-Salé-Kénitra', CodeISO: 'MA-04', Actif: true },
+      { RegionID: 2, Nom: 'Casablanca-Settat', CodeISO: 'MA-06', Actif: true },
+    ],
+    provinces: [
+      { ProvinceID: 10, RegionID: 1, Nom: 'Rabat', Code: 'RBA', Actif: true },
+      { ProvinceID: 11, RegionID: 1, Nom: 'Salé', Code: 'SAL', Actif: true },
+      { ProvinceID: 20, RegionID: 2, Nom: 'Casablanca', Code: 'CAS', Actif: true },
+    ],
+    categories: [
+      { CategorieID: 3, Libelle: 'Centre de dépistage', Abreviation: 'CD', TypeMilieu: 'U', Actif: true },
+      { CategorieID: 4, Libelle: 'Hôpital', Abreviation: 'HOP', TypeMilieu: 'H', Actif: true },
+    ],
+    centres: [
+      {
+        CentreID: 120,
+        CodeGeo: 'CEN-0120',
+        Nom: 'Centre Rabat - Exemple',
+        RegionID: 1,
+        ProvinceID: 10,
+        CategorieID: 3,
+        Reseau: 1,
+        Latitude: 34.020882,
+        Longitude: -6.841650,
+        GeoLocation: null,
+        DateMaj: new Date().toISOString(),
+        Actif: true,
+      },
+    ],
+    referrals: [],
+  },
 };
 
 const VALID = {
@@ -12,6 +44,7 @@ const VALID = {
   family_situation: ['MARRIED', 'SINGLE', 'PREFER_NOT_TO_SAY'],
   language:         ['FR', 'AR'],
   platform:         ['ANDROID', 'IOS'],
+  center_referral_source: ['MAP', 'QUIZ', 'CHATBOT', 'NOTIFICATION'],
 };
 
 function validate(body, rules) {
@@ -20,6 +53,16 @@ function validate(body, rules) {
       return `Invalid value '${body[field]}' for field '${field}'. Allowed: ${values.join(', ')}`;
     }
   }
+  return null;
+}
+
+function parseOptionalBoolean(value) {
+  if (value === undefined) return undefined;
+  if (value === true || value === false) return value;
+  if (typeof value !== 'string') return null;
+  const v = value.trim().toLowerCase();
+  if (v === 'true') return true;
+  if (v === 'false') return false;
   return null;
 }
 
@@ -53,4 +96,5 @@ module.exports = {
   validateArray,
   requireFields,
   error,
+  parseOptionalBoolean,
 };

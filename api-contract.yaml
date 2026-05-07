@@ -11,16 +11,20 @@ servers:
     description: Production
 
 tags:
-  - name: Users
-    description: Anonymous user management (device-based, no login)
+  - name: DeviceProfiles
+    description: Anonymous device profile management (device-based, no login)
   - name: Sessions
     description: App session tracking
+  - name: Geolocation (CMS)
+    description: Read-only geographic referentials (CMS schema)
+  - name: Geolocation (App)
+    description: User interactions with centers (App schema)
 
 paths:
 
   /users:
     post:
-      tags: [Users]
+      tags: [DeviceProfiles]
       summary: Register a new anonymous user
       description: Called once on first app launch. Creates a user identified by device_uuid.
       requestBody:
@@ -28,7 +32,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserRequest'
+              $ref: '#/components/schemas/CreateDeviceProfileRequest'
             example:
               device_uuid: "550e8400-e29b-41d4-a716-446655440000"
               user_type: ["YOUTH"]
@@ -42,7 +46,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 user_type: ["YOUTH"]
@@ -73,7 +77,7 @@ paths:
 
   /users/{device_uuid}:
     get:
-      tags: [Users]
+      tags: [DeviceProfiles]
       summary: Get user profile
       description: Returns the profile of the user identified by device_uuid.
       parameters:
@@ -84,7 +88,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 user_type: ["YOUTH"]
@@ -105,7 +109,7 @@ paths:
                 message: "No user found for this device_uuid."
 
     patch:
-      tags: [Users]
+      tags: [DeviceProfiles]
       summary: Update user profile
       description: Update mutable fields — language, fcm_token, user_type, etc.
       parameters:
@@ -115,7 +119,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateUserRequest'
+              $ref: '#/components/schemas/UpdateDeviceProfileRequest'
             example:
               language: "AR"
               fcm_token: "new_fcm_token_xyz789"
@@ -125,7 +129,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 user_type: ["YOUTH"]
@@ -247,6 +251,327 @@ paths:
                 error: "NOT_FOUND"
                 message: "No session found for this id."
 
+  # ── Geolocation (CMS, read-only) ───────────────────────────────────────────
+
+  /geo/regions:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: List regions
+      description: Read-only referential (CMS schema).
+      responses:
+        '200':
+          description: Regions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+
+  /geo/regions/{region_id}:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: Get region by id
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: region_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Region
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Region'
+        '404':
+          description: Region not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /geo/provinces:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: List provinces
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: region_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter provinces by RegionID.
+      responses:
+        '200':
+          description: Provinces list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Province'
+
+  /geo/provinces/{province_id}:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: Get province by id
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: province_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 10
+      responses:
+        '200':
+          description: Province
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Province'
+        '404':
+          description: Province not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /geo/categories:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: List center categories
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: actif
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Filter by Actif.
+      responses:
+        '200':
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Categorie'
+
+  /geo/categories/{categorie_id}:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: Get category by id
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: categorie_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 3
+      responses:
+        '200':
+          description: Category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Categorie'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /geo/centres:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: List centers
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: region_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by RegionID.
+        - name: province_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by ProvinceID.
+        - name: categorie_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by CategorieID.
+        - name: actif
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Filter by Actif.
+      responses:
+        '200':
+          description: Centers list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Centre'
+
+  /geo/centres/{centre_id}:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: Get center by id
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: centre_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 120
+      responses:
+        '200':
+          description: Center
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Centre'
+        '404':
+          description: Center not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Geolocation (App, CRUD) ────────────────────────────────────────────────
+
+  /geo/referrals:
+    get:
+      tags: [Geolocation (App)]
+      summary: List center referrals
+      description: CRUD table in app schema.
+      parameters:
+        - name: device_uuid
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Filter by user device_uuid.
+      responses:
+        '200':
+          description: Referrals list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CenterReferral'
+
+    post:
+      tags: [Geolocation (App)]
+      summary: Create a center referral
+      description: CRUD table in app schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCenterReferralRequest'
+      responses:
+        '201':
+          description: Referral created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CenterReferral'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /geo/referrals/{id}:
+    get:
+      tags: [Geolocation (App)]
+      summary: Get referral by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Referral
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CenterReferral'
+        '404':
+          description: Referral not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags: [Geolocation (App)]
+      summary: Update referral
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCenterReferralRequest'
+      responses:
+        '200':
+          description: Referral updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CenterReferral'
+        '404':
+          description: Referral not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Geolocation (App)]
+      summary: Delete referral
+      responses:
+        '204':
+          description: Referral deleted
+        '404':
+          description: Referral not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
 
   parameters:
@@ -279,6 +604,10 @@ components:
       type: string
       enum: [MALE, FEMALE, PREFER_NOT_TO_SAY]
 
+    FamilySituation:
+      type: string
+      enum: [MARRIED, SINGLE, PREFER_NOT_TO_SAY]
+
     Language:
       type: string
       enum: [FR, AR]
@@ -287,9 +616,9 @@ components:
       type: string
       enum: [ANDROID, IOS]
 
-    # ── User ───────────────────────────────────────────────
+    # ── DeviceProfile ──────────────────────────────────────
 
-    CreateUserRequest:
+    CreateDeviceProfileRequest:
       type: object
       required: [device_uuid, user_type, age_range, gender, language]
       properties:
@@ -310,11 +639,12 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
+          description: Must be null unless gender is FEMALE (DB check constraint).
         fcm_token:
           type: string
           nullable: true
 
-    UpdateUserRequest:
+    UpdateDeviceProfileRequest:
       type: object
       description: All fields are optional. Send only what needs to be updated.
       properties:
@@ -331,11 +661,12 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
+          description: Must be null unless gender is FEMALE (DB check constraint).
         fcm_token:
           type: string
           nullable: true
 
-    UserResponse:
+    DeviceProfileResponse:
       type: object
       properties:
         device_uuid:
@@ -355,12 +686,158 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
+          description: Must be null unless gender is FEMALE (DB check constraint).
         fcm_token:
           type: string
           nullable: true
         created_at:
           type: string
           format: date-time
+
+    # ── Geolocation (CMS) ──────────────────────────────────
+
+    Region:
+      type: object
+      properties:
+        RegionID:
+          type: integer
+        Nom:
+          type: string
+        CodeISO:
+          type: string
+        Actif:
+          type: boolean
+
+    Province:
+      type: object
+      properties:
+        ProvinceID:
+          type: integer
+        RegionID:
+          type: integer
+        Nom:
+          type: string
+        Code:
+          type: string
+        Actif:
+          type: boolean
+
+    TypeMilieu:
+      type: string
+      enum: [R, U, S, H]
+
+    Categorie:
+      type: object
+      properties:
+        CategorieID:
+          type: integer
+        Libelle:
+          type: string
+        Abreviation:
+          type: string
+        TypeMilieu:
+          $ref: '#/components/schemas/TypeMilieu'
+        Actif:
+          type: boolean
+
+    Centre:
+      type: object
+      properties:
+        CentreID:
+          type: integer
+        CodeGeo:
+          type: string
+        Nom:
+          type: string
+        RegionID:
+          type: integer
+        ProvinceID:
+          type: integer
+        CategorieID:
+          type: integer
+        Reseau:
+          type: integer
+          minimum: 1
+          maximum: 4
+        Latitude:
+          type: number
+          format: float
+          nullable: true
+        Longitude:
+          type: number
+          format: float
+          nullable: true
+        GeoLocation:
+          type: string
+          nullable: true
+          description: Geography value (DB-specific). Prefer Latitude/Longitude in clients.
+        DateMaj:
+          type: string
+          format: date-time
+          nullable: true
+        Actif:
+          type: boolean
+
+    # ── Geolocation (App) ──────────────────────────────────
+
+    CenterReferralSource:
+      type: string
+      enum: [MAP, QUIZ, CHATBOT, NOTIFICATION]
+
+    CreateCenterReferralRequest:
+      type: object
+      required: [device_uuid, center_id, source]
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+        center_id:
+          type: string
+          format: uuid
+          description: References the center (see CMS centres referential).
+        quiz_result_id:
+          type: string
+          format: uuid
+          nullable: true
+        source:
+          $ref: '#/components/schemas/CenterReferralSource'
+        followed_up:
+          type: boolean
+          nullable: true
+
+    UpdateCenterReferralRequest:
+      type: object
+      description: All fields are optional. Send only what needs to be updated.
+      properties:
+        quiz_result_id:
+          type: string
+          format: uuid
+          nullable: true
+        source:
+          $ref: '#/components/schemas/CenterReferralSource'
+        followed_up:
+          type: boolean
+
+    CenterReferral:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        device_uuid:
+          type: string
+          format: uuid
+        center_id:
+          type: string
+          format: uuid
+        quiz_result_id:
+          type: string
+          format: uuid
+          nullable: true
+        source:
+          $ref: '#/components/schemas/CenterReferralSource'
+        followed_up:
+          type: boolean
 
     # ── Session ────────────────────────────────────────────
 
