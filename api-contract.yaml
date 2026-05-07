@@ -777,6 +777,9 @@ components:
           nullable: true
         Actif:
           type: boolean
+        Commune:
+          type: string
+          nullable: true
 
     # ── Geolocation (App) ──────────────────────────────────
 

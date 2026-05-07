@@ -31,6 +31,7 @@ const db = {
         GeoLocation: null,
         DateMaj: new Date().toISOString(),
         Actif: true,
+        Commune: 'Rabat',
       },
       {
         CentreID: 121,
@@ -45,6 +46,7 @@ const db = {
         GeoLocation: null,
         DateMaj: new Date().toISOString(),
         Actif: true,
+        Commune: 'Agdal-Ryad',
       },
       {
         CentreID: 122,
@@ -59,6 +61,7 @@ const db = {
         GeoLocation: null,
         DateMaj: new Date().toISOString(),
         Actif: true,
+        Commune: 'Salé',
       },
     ],
     referrals: [],
