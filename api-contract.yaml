@@ -1,10 +1,28 @@
 openapi: 3.0.3
 info:
   title: App API
-  description: API contract for despistage-MSPS app - anonymous user identification and session tracking.
-  version: 1.0.0
+  description: |
+    API contract for MSPS Dépistage — anonymous users, sessions, and geolocation referentials.
+
+    **JSON property naming**
+    - App endpoints (`/users`, `/sessions`, `/geo/referrals`, …) use **snake_case** on the wire.
+    - Geo CMS read endpoints (`/geo/regions`, `/geo/centres`, …) use **PascalCase / French MCD names**
+      (`RegionID`, `Nom`, `CodeRegion`, …) exactly as in the response schemas below.
+
+    **Geo CMS identifiers**
+    - `RegionID`, `ProvinceID`, `CommuneID`, `CategorieID`, `CentreID` are database identity values
+      returned to the mobile app.
+    - `CodeRegion`, `CodeProvince`, `CodeCommune`, `CodeGeo` are optional import/source codes
+      (BOSS/Excel); admin import only — clients should prefer the integer IDs.
+  version: 1.1.0
 
 servers:
+  # Added by API Auto Mocking Plugin
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/lynxdev99organizatio/DepistageMSPS/1.0.0
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/lynxdev99organizatio/Depistage/1.0.0
   - url: http://localhost:4010
     description: Express mock server (local dev)
   - url: https://api.yourapp.com/v1
@@ -16,7 +34,9 @@ tags:
   - name: Sessions
     description: App session tracking
   - name: Geolocation (CMS)
-    description: Read-only geographic referentials (CMS schema)
+    description: |
+      Read-only geographic referentials (`cms` schema). Responses use PascalCase property names
+      (`RegionID`, not `region_id`). Reference data is cached server-side (~30 minutes).
   - name: Geolocation (App)
     description: User interactions with centers (App schema)
 
@@ -293,6 +313,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Region not found."
 
   /geo/provinces:
     get:
@@ -341,6 +364,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Province not found."
+
+  /geo/communes:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: List communes
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: region_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter communes by RegionID.
+        - name: province_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter communes by ProvinceID.
+        - name: actif
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Filter by Actif.
+      responses:
+        '200':
+          description: Communes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Commune'
+
+  /geo/communes/{commune_id}:
+    get:
+      tags: [Geolocation (CMS)]
+      summary: Get commune by id
+      description: Read-only referential (CMS schema).
+      parameters:
+        - name: commune_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 101
+      responses:
+        '200':
+          description: Commune
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Commune'
+        '404':
+          description: Commune not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Commune not found."
 
   /geo/categories:
     get:
@@ -389,6 +478,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Category not found."
 
   /geo/centres:
     get:
@@ -414,6 +506,12 @@ paths:
           schema:
             type: integer
           description: Filter by CategorieID.
+        - name: commune_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by CommuneID.
         - name: actif
           in: query
           required: false
@@ -455,6 +553,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Center not found."
 
   # ── Geolocation (App, CRUD) ────────────────────────────────────────────────
 
@@ -698,18 +799,23 @@ components:
 
     Region:
       type: object
+      required: [RegionID, Nom, Actif]
       properties:
         RegionID:
           type: integer
+          description: Surrogate primary key (database identity). Use this in filters and FKs.
         Nom:
           type: string
-        CodeISO:
+        CodeRegion:
           type: string
+          nullable: true
+          description: BOSS/import source code (admin). Not required for mobile clients.
         Actif:
           type: boolean
 
     Province:
       type: object
+      required: [ProvinceID, RegionID, Nom, Actif]
       properties:
         ProvinceID:
           type: integer
@@ -717,8 +823,29 @@ components:
           type: integer
         Nom:
           type: string
-        Code:
+        CodeProvince:
           type: string
+          nullable: true
+          description: BOSS/import source code (admin).
+        Actif:
+          type: boolean
+
+    Commune:
+      type: object
+      required: [CommuneID, RegionID, ProvinceID, Nom, Actif]
+      properties:
+        CommuneID:
+          type: integer
+        RegionID:
+          type: integer
+        ProvinceID:
+          type: integer
+        Nom:
+          type: string
+        CodeCommune:
+          type: string
+          nullable: true
+          description: BOSS/import source code (admin).
         Actif:
           type: boolean
 
@@ -728,6 +855,7 @@ components:
 
     Categorie:
       type: object
+      required: [CategorieID, Libelle, Actif]
       properties:
         CategorieID:
           type: integer
@@ -735,18 +863,24 @@ components:
           type: string
         Abreviation:
           type: string
+          nullable: true
         TypeMilieu:
           $ref: '#/components/schemas/TypeMilieu'
+          nullable: true
         Actif:
           type: boolean
 
     Centre:
       type: object
+      required: [CentreID, Nom, RegionID, ProvinceID, CategorieID, Reseau, Actif]
       properties:
         CentreID:
           type: integer
+          description: Surrogate primary key (database identity).
         CodeGeo:
           type: string
+          nullable: true
+          description: BOSS centre identifier (import key). Distinct from CentreID.
         Nom:
           type: string
         RegionID:
@@ -755,22 +889,22 @@ components:
           type: integer
         CategorieID:
           type: integer
+        CommuneID:
+          type: integer
+          nullable: true
+          description: FK to CommuneID when the commune link is known.
         Reseau:
           type: integer
           minimum: 1
           maximum: 4
         Latitude:
           type: number
-          format: float
+          format: double
           nullable: true
         Longitude:
           type: number
-          format: float
+          format: double
           nullable: true
-        GeoLocation:
-          type: string
-          nullable: true
-          description: Geography value (DB-specific). Prefer Latitude/Longitude in clients.
         DateMaj:
           type: string
           format: date-time
@@ -780,6 +914,8 @@ components:
         Commune:
           type: string
           nullable: true
+          readOnly: true
+          description: Commune display name (joined from cms.Commune.Nom). Not stored on Centre.
 
     # ── Geolocation (App) ──────────────────────────────────
 
@@ -795,9 +931,8 @@ components:
           type: string
           format: uuid
         center_id:
-          type: string
-          format: uuid
-          description: References the center (see CMS centres referential).
+          type: integer
+          description: References CentreID from the CMS centres referential.
         quiz_result_id:
           type: string
           format: uuid
@@ -831,8 +966,7 @@ components:
           type: string
           format: uuid
         center_id:
-          type: string
-          format: uuid
+          type: integer
         quiz_result_id:
           type: string
           format: uuid
