@@ -40,6 +40,26 @@ router.get('/provinces/:province_id', (req, res) => {
   return res.json(province);
 });
 
+router.get('/communes', (req, res) => {
+  const regionId = req.query.region_id !== undefined ? Number(req.query.region_id) : undefined;
+  const provinceId = req.query.province_id !== undefined ? Number(req.query.province_id) : undefined;
+  const actif = parseOptionalBoolean(req.query.actif);
+  if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
+
+  let out = db.geo.communes;
+  if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.RegionID === regionId);
+  if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.ProvinceID === provinceId);
+  if (actif !== undefined) out = out.filter(c => c.Actif === actif);
+  return res.json(out);
+});
+
+router.get('/communes/:commune_id', (req, res) => {
+  const id = Number(req.params.commune_id);
+  const commune = db.geo.communes.find(c => c.CommuneID === id);
+  if (!commune) return error(res, 404, 'NOT_FOUND', 'Commune not found.');
+  return res.json(commune);
+});
+
 router.get('/categories', (req, res) => {
   const actif = parseOptionalBoolean(req.query.actif);
   if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
@@ -59,6 +79,7 @@ router.get('/centres', (req, res) => {
   const regionId = req.query.region_id !== undefined ? Number(req.query.region_id) : undefined;
   const provinceId = req.query.province_id !== undefined ? Number(req.query.province_id) : undefined;
   const categorieId = req.query.categorie_id !== undefined ? Number(req.query.categorie_id) : undefined;
+  const communeId = req.query.commune_id !== undefined ? Number(req.query.commune_id) : undefined;
   const actif = parseOptionalBoolean(req.query.actif);
   if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
 
@@ -66,6 +87,7 @@ router.get('/centres', (req, res) => {
   if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.RegionID === regionId);
   if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.ProvinceID === provinceId);
   if (categorieId !== undefined && !Number.isNaN(categorieId)) out = out.filter(c => c.CategorieID === categorieId);
+  if (communeId !== undefined && !Number.isNaN(communeId)) out = out.filter(c => c.CommuneID === communeId);
   if (actif !== undefined) out = out.filter(c => c.Actif === actif);
   return res.json(out);
 });
