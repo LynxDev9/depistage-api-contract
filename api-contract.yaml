@@ -4,17 +4,22 @@ info:
   description: |
     API contract for MSPS Dépistage — anonymous users, sessions, and geolocation referentials.
 
-    **JSON property naming**
-    - App endpoints (`/users`, `/sessions`, `/geo/referrals`, …) use **snake_case** on the wire.
-    - Geo CMS read endpoints (`/geo/regions`, `/geo/centres`, …) use **PascalCase / French MCD names**
-      (`RegionID`, `Nom`, `CodeRegion`, …) exactly as in the response schemas below.
+    **v2.0.0 — English snake_case (breaking change)**
 
-    **Geo CMS identifiers**
-    - `RegionID`, `ProvinceID`, `CommuneID`, `CategorieID`, `CentreID` are database identity values
-      returned to the mobile app.
-    - `CodeRegion`, `CodeProvince`, `CodeCommune`, `CodeGeo` are optional import/source codes
-      (BOSS/Excel); admin import only — clients should prefer the integer IDs.
-  version: 1.1.0
+    All public surfaces use **English snake_case**: URL paths, query parameters, JSON property names,
+    and enum string literals (`youth`, `android`, `map` — not `YOUTH` / `ANDROID` / `MAP`).
+
+    **Migration from v1.x**
+    - Geo CMS JSON: `RegionID` / `Nom` / `Actif` → `region_id` / `name` / `is_active`
+    - Paths: `/geo/centres` → `/geo/centers`; query `actif` → `active`
+    - Path params: `categorie_id` → `category_id`, `centre_id` → `center_id`
+    - Category schema: `Categorie` → `Category`; center: `Centre` → `Center`
+    - `TypeMilieu` → `environment_type` with values `r`, `u`, `s`, `h` (lowercase)
+
+    **Identifiers**
+    - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
+    - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
+  version: 2.0.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -35,8 +40,8 @@ tags:
     description: App session tracking
   - name: Geolocation (CMS)
     description: |
-      Read-only geographic referentials (`cms` schema). Responses use PascalCase property names
-      (`RegionID`, not `region_id`). Reference data is cached server-side (~30 minutes).
+      Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
+      (`region_id`, `name`, `is_active`). Reference data is cached server-side (~30 minutes).
   - name: Geolocation (App)
     description: User interactions with centers (App schema)
 
@@ -55,10 +60,10 @@ paths:
               $ref: '#/components/schemas/CreateDeviceProfileRequest'
             example:
               device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-              user_type: ["YOUTH"]
+              user_type: ["youth", "key_population"]
               age_range: "18_25"
-              gender: "MALE"
-              language: "FR"
+              gender: "male"
+              language: "fr"
               fcm_token: "fcm_token_example_abc123"
       responses:
         '201':
@@ -69,10 +74,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["YOUTH"]
+                user_type: ["youth"]
                 age_range: "18_25"
-                gender: "MALE"
-                language: "FR"
+                gender: "male"
+                language: "fr"
                 is_pregnant: null
                 fcm_token: "fcm_token_example_abc123"
                 created_at: "2025-01-15T10:30:00Z"
@@ -111,10 +116,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["YOUTH"]
+                user_type: ["youth"]
                 age_range: "18_25"
-                gender: "MALE"
-                language: "FR"
+                gender: "male"
+                language: "fr"
                 is_pregnant: null
                 fcm_token: "fcm_token_example_abc123"
                 created_at: "2025-01-15T10:30:00Z"
@@ -141,7 +146,7 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateDeviceProfileRequest'
             example:
-              language: "AR"
+              language: "ar"
               fcm_token: "new_fcm_token_xyz789"
       responses:
         '200':
@@ -152,10 +157,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["YOUTH"]
+                user_type: ["youth"]
                 age_range: "18_25"
-                gender: "MALE"
-                language: "AR"
+                gender: "male"
+                language: "ar"
                 is_pregnant: null
                 fcm_token: "new_fcm_token_xyz789"
                 created_at: "2025-01-15T10:30:00Z"
@@ -191,7 +196,7 @@ paths:
               $ref: '#/components/schemas/CreateSessionRequest'
             example:
               device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-              platform: "ANDROID"
+              platform: "android"
               app_version: "1.0.0"
       responses:
         '201':
@@ -205,7 +210,7 @@ paths:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 started_at: "2025-01-15T10:30:00Z"
                 duration_sec: null
-                platform: "ANDROID"
+                platform: "android"
                 app_version: "1.0.0"
         '404':
           description: device_uuid not registered
@@ -259,7 +264,7 @@ paths:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 started_at: "2025-01-15T10:30:00Z"
                 duration_sec: 142
-                platform: "ANDROID"
+                platform: "android"
                 app_version: "1.0.0"
         '404':
           description: Session not found
@@ -287,6 +292,11 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Region'
+              example:
+                - region_id: 1
+                  name: "Tanger-Tétouan-Al Hoceima"
+                  region_code: "01"
+                  is_active: true
 
   /geo/regions/{region_id}:
     get:
@@ -328,7 +338,7 @@ paths:
           required: false
           schema:
             type: integer
-          description: Filter provinces by RegionID.
+          description: Filter provinces by region_id.
       responses:
         '200':
           description: Provinces list
@@ -379,19 +389,19 @@ paths:
           required: false
           schema:
             type: integer
-          description: Filter communes by RegionID.
+          description: Filter communes by region_id.
         - name: province_id
           in: query
           required: false
           schema:
             type: integer
-          description: Filter communes by ProvinceID.
-        - name: actif
+          description: Filter communes by province_id.
+        - name: active
           in: query
           required: false
           schema:
             type: boolean
-          description: Filter by Actif.
+          description: Filter by is_active.
       responses:
         '200':
           description: Communes list
@@ -437,12 +447,12 @@ paths:
       summary: List center categories
       description: Read-only referential (CMS schema).
       parameters:
-        - name: actif
+        - name: active
           in: query
           required: false
           schema:
             type: boolean
-          description: Filter by Actif.
+          description: Filter by is_active.
       responses:
         '200':
           description: Categories list
@@ -451,15 +461,15 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Categorie'
+                  $ref: '#/components/schemas/Category'
 
-  /geo/categories/{categorie_id}:
+  /geo/categories/{category_id}:
     get:
       tags: [Geolocation (CMS)]
       summary: Get category by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: categorie_id
+        - name: category_id
           in: path
           required: true
           schema:
@@ -471,7 +481,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Categorie'
+                $ref: '#/components/schemas/Category'
         '404':
           description: Category not found
           content:
@@ -482,7 +492,7 @@ paths:
                 error: "NOT_FOUND"
                 message: "Category not found."
 
-  /geo/centres:
+  /geo/centers:
     get:
       tags: [Geolocation (CMS)]
       summary: List centers
@@ -493,31 +503,31 @@ paths:
           required: false
           schema:
             type: integer
-          description: Filter by RegionID.
+          description: Filter by region_id.
         - name: province_id
           in: query
           required: false
           schema:
             type: integer
-          description: Filter by ProvinceID.
-        - name: categorie_id
+          description: Filter by province_id.
+        - name: category_id
           in: query
           required: false
           schema:
             type: integer
-          description: Filter by CategorieID.
+          description: Filter by category_id.
         - name: commune_id
           in: query
           required: false
           schema:
             type: integer
-          description: Filter by CommuneID.
-        - name: actif
+          description: Filter by commune_id.
+        - name: active
           in: query
           required: false
           schema:
             type: boolean
-          description: Filter by Actif.
+          description: Filter by is_active.
       responses:
         '200':
           description: Centers list
@@ -526,15 +536,15 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Centre'
+                  $ref: '#/components/schemas/Center'
 
-  /geo/centres/{centre_id}:
+  /geo/centers/{center_id}:
     get:
       tags: [Geolocation (CMS)]
       summary: Get center by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: centre_id
+        - name: center_id
           in: path
           required: true
           schema:
@@ -546,7 +556,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Centre'
+                $ref: '#/components/schemas/Center'
         '404':
           description: Center not found
           content:
@@ -592,6 +602,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateCenterReferralRequest'
+            example:
+              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+              center_id: 120
+              quiz_result_id: null
+              source: "map"
+              followed_up: false
       responses:
         '201':
           description: Referral created
@@ -599,6 +615,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CenterReferral'
+              example:
+                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                center_id: 120
+                quiz_result_id: null
+                source: "map"
+                followed_up: false
         '422':
           description: Validation error
           content:
@@ -640,6 +663,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateCenterReferralRequest'
+            example:
+              source: "chatbot"
+              followed_up: true
       responses:
         '200':
           description: Referral updated
@@ -647,6 +673,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CenterReferral'
+              example:
+                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+                center_id: 120
+                quiz_result_id: null
+                source: "chatbot"
+                followed_up: true
         '404':
           description: Referral not found
           content:
@@ -693,29 +726,32 @@ components:
       type: array
       items:
         type: string
-        enum: [YOUTH, KEY_POPULATION, MIGRANT, GENERAL_PUBLIC]
+        enum: [youth, key_population, migrant, general_public]
       minItems: 1
-      description: Array of user type classifications (use gender field for identifying women)
+      description: |
+        Array of user type classifications (use gender for identifying women).
+        Send multiple values as a JSON array, e.g. `["youth", "migrant"]`.
+        Property name is `user_type` (singular), not `user_types`.
 
     AgeRange:
       type: string
-      enum: [LESS_18, 18_25, 26_35, 36_50, OVER_50]
+      enum: [less_18, 18_25, 26_35, 36_50, over_50]
 
     Gender:
       type: string
-      enum: [MALE, FEMALE, PREFER_NOT_TO_SAY]
+      enum: [male, female, prefer_not_to_say]
 
     FamilySituation:
       type: string
-      enum: [MARRIED, SINGLE, PREFER_NOT_TO_SAY]
+      enum: [married, single, prefer_not_to_say]
 
     Language:
       type: string
-      enum: [FR, AR]
+      enum: [fr, ar]
 
     Platform:
       type: string
-      enum: [ANDROID, IOS]
+      enum: [android, ios]
 
     # ── DeviceProfile ──────────────────────────────────────
 
@@ -740,7 +776,7 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
-          description: Must be null unless gender is FEMALE (DB check constraint).
+          description: Must be null unless gender is female (DB check constraint).
         fcm_token:
           type: string
           nullable: true
@@ -762,7 +798,7 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
-          description: Must be null unless gender is FEMALE (DB check constraint).
+          description: Must be null unless gender is female (DB check constraint).
         fcm_token:
           type: string
           nullable: true
@@ -787,7 +823,7 @@ components:
         is_pregnant:
           type: boolean
           nullable: true
-          description: Must be null unless gender is FEMALE (DB check constraint).
+          description: Must be null unless gender is female (DB check constraint).
         fcm_token:
           type: string
           nullable: true
@@ -799,129 +835,130 @@ components:
 
     Region:
       type: object
-      required: [RegionID, Nom, Actif]
+      required: [region_id, name, is_active]
       properties:
-        RegionID:
+        region_id:
           type: integer
           description: Surrogate primary key (database identity). Use this in filters and FKs.
-        Nom:
+        name:
           type: string
-        CodeRegion:
+        region_code:
           type: string
           nullable: true
           description: BOSS/import source code (admin). Not required for mobile clients.
-        Actif:
+        is_active:
           type: boolean
 
     Province:
       type: object
-      required: [ProvinceID, RegionID, Nom, Actif]
+      required: [province_id, region_id, name, is_active]
       properties:
-        ProvinceID:
+        province_id:
           type: integer
-        RegionID:
+        region_id:
           type: integer
-        Nom:
+        name:
           type: string
-        CodeProvince:
+        province_code:
           type: string
           nullable: true
           description: BOSS/import source code (admin).
-        Actif:
+        is_active:
           type: boolean
 
     Commune:
       type: object
-      required: [CommuneID, RegionID, ProvinceID, Nom, Actif]
+      required: [commune_id, region_id, province_id, name, is_active]
       properties:
-        CommuneID:
+        commune_id:
           type: integer
-        RegionID:
+        region_id:
           type: integer
-        ProvinceID:
+        province_id:
           type: integer
-        Nom:
+        name:
           type: string
-        CodeCommune:
+        commune_code:
           type: string
           nullable: true
           description: BOSS/import source code (admin).
-        Actif:
+        is_active:
           type: boolean
 
-    TypeMilieu:
+    EnvironmentType:
       type: string
-      enum: [R, U, S, H]
+      enum: [r, u, s, h]
+      description: Rural, urban, semi-urban, hospital (lowercase wire values).
 
-    Categorie:
+    Category:
       type: object
-      required: [CategorieID, Libelle, Actif]
+      required: [category_id, label, is_active]
       properties:
-        CategorieID:
+        category_id:
           type: integer
-        Libelle:
+        label:
           type: string
-        Abreviation:
+        abbreviation:
           type: string
           nullable: true
-        TypeMilieu:
-          $ref: '#/components/schemas/TypeMilieu'
+        environment_type:
+          $ref: '#/components/schemas/EnvironmentType'
           nullable: true
-        Actif:
+        is_active:
           type: boolean
 
-    Centre:
+    Center:
       type: object
-      required: [CentreID, Nom, RegionID, ProvinceID, CategorieID, Reseau, Actif]
+      required: [center_id, name, region_id, province_id, category_id, network, is_active]
       properties:
-        CentreID:
+        center_id:
           type: integer
           description: Surrogate primary key (database identity).
-        CodeGeo:
+        geo_code:
           type: string
           nullable: true
-          description: BOSS centre identifier (import key). Distinct from CentreID.
-        Nom:
+          description: BOSS center identifier (import key). Distinct from center_id.
+        name:
           type: string
-        RegionID:
+        region_id:
           type: integer
-        ProvinceID:
+        province_id:
           type: integer
-        CategorieID:
+        category_id:
           type: integer
-        CommuneID:
+        commune_id:
           type: integer
           nullable: true
-          description: FK to CommuneID when the commune link is known.
-        Reseau:
+          description: FK to commune_id when the commune link is known.
+        network:
           type: integer
           minimum: 1
           maximum: 4
-        Latitude:
+        latitude:
           type: number
           format: double
           nullable: true
-        Longitude:
+        longitude:
           type: number
           format: double
           nullable: true
-        DateMaj:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-        Actif:
+        is_active:
           type: boolean
-        Commune:
+        commune_name:
           type: string
           nullable: true
           readOnly: true
-          description: Commune display name (joined from cms.Commune.Nom). Not stored on Centre.
+          description: Commune display name (joined from cms.Commune). Not stored on Center.
 
     # ── Geolocation (App) ──────────────────────────────────
 
     CenterReferralSource:
       type: string
-      enum: [MAP, QUIZ, CHATBOT, NOTIFICATION]
+      enum: [map, quiz, chatbot, notification]
 
     CreateCenterReferralRequest:
       type: object
@@ -932,7 +969,7 @@ components:
           format: uuid
         center_id:
           type: integer
-          description: References CentreID from the CMS centres referential.
+          description: References center_id from the CMS centers referential.
         quiz_result_id:
           type: string
           format: uuid
