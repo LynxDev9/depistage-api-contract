@@ -44,6 +44,8 @@ tags:
       (`region_id`, `name`, `is_active`). Reference data is cached server-side (~30 minutes).
   - name: Geolocation (App)
     description: User interactions with centers (App schema)
+  - name: Analytics
+    description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard queries.
 
 paths:
 
@@ -706,6 +708,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /events:
+    post:
+      tags: [Analytics]
+      summary: Record a mobile analytics event
+      description: |
+        Records one mobile usage event for later dashboard reporting. Events are **append-only**;
+        the API does not expose an internal event identifier in the response.
+
+        Use this endpoint for screen views, content consultations, geolocation interactions,
+        self-assessment events, chatbot events, notification opens, surveys, FAQ usage,
+        and referral-related analytics.
+
+        Optional `metadata` must not contain personal data, names, phone numbers, exact GPS
+        coordinates, free-text health declarations, or full chatbot transcripts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordAppEventRequest'
+            example:
+              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
+              session_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              event_name: "content_viewed"
+              module: "content"
+              content_id: 10
+              center_id: null
+              region_id: 1
+              province_id: 10
+              language: "fr"
+              channel: "text"
+              metadata:
+                section: "prevention"
+                duration_sec: 45
+      responses:
+        '202':
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppEventAcceptedResponse'
+              example:
+                accepted: true
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid value for field 'channel'."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
 
   parameters:
@@ -717,6 +774,24 @@ components:
         type: string
         format: uuid
       example: "550e8400-e29b-41d4-a716-446655440000"
+
+  responses:
+
+    TooManyRequests:
+      description: Too many requests from the same client, device, IP, or authenticated user.
+      headers:
+        Retry-After:
+          description: Number of seconds to wait before retrying, when available.
+          schema:
+            type: integer
+            example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RATE_LIMITED"
+            message: "Too many requests. Please retry later."
 
   schemas:
 
@@ -752,6 +827,23 @@ components:
     Platform:
       type: string
       enum: [android, ios]
+
+    AppEventChannel:
+      type: string
+      enum: [text, audio, video, chatbot, notification]
+
+    AppEventModule:
+      type: string
+      enum:
+        - content
+        - geo
+        - referral
+        - self_assessment
+        - chatbot
+        - notification
+        - survey
+        - faq
+        - session
 
     # ── DeviceProfile ──────────────────────────────────────
 
@@ -1056,6 +1148,69 @@ components:
           type: string
 
     # ── Error ──────────────────────────────────────────────
+
+    # Analytics
+
+    RecordAppEventRequest:
+      type: object
+      required: [event_name, module]
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+          nullable: true
+        session_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_name:
+          type: string
+          maxLength: 100
+          pattern: '^[a-z0-9_.:-]+$'
+          example: "content_viewed"
+        module:
+          $ref: '#/components/schemas/AppEventModule'
+        content_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        center_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        region_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        province_id:
+          type: integer
+          minimum: 1
+          nullable: true
+        language:
+          allOf:
+            - $ref: '#/components/schemas/Language'
+          nullable: true
+        channel:
+          allOf:
+            - $ref: '#/components/schemas/AppEventChannel'
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: >
+            Optional small JSON object for non-sensitive analytics details.
+            Must not contain personal data, names, phone numbers, exact GPS coordinates,
+            free-text health declarations, or full chatbot transcripts.
+            Recommended maximum serialized size: 4 KB.
+
+    AppEventAcceptedResponse:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+          example: true
 
     ErrorResponse:
       type: object
