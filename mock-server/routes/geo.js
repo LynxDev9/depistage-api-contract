@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, VALID, validate, error, parseOptionalBoolean } = require('../db');
+const { db, VALID, validate, requireFields, error, parseOptionalBoolean } = require('../db');
 
 const router = express.Router();
 
@@ -19,8 +19,8 @@ router.get('/regions', (req, res) => {
 
 router.get('/regions/:region_id', (req, res) => {
   const id = Number(req.params.region_id);
-  const region = db.geo.regions.find(r => r.RegionID === id);
-  if (!region) return error(res, 404, 'NOT_FOUND', 'Region not found');
+  const region = db.geo.regions.find(r => r.region_id === id);
+  if (!region) return error(res, 404, 'NOT_FOUND', 'Region not found.');
   return res.json(region);
 });
 
@@ -28,75 +28,81 @@ router.get('/provinces', (req, res) => {
   const regionId = req.query.region_id !== undefined ? Number(req.query.region_id) : undefined;
   let out = db.geo.provinces;
   if (regionId !== undefined && !Number.isNaN(regionId)) {
-    out = out.filter(p => p.RegionID === regionId);
+    out = out.filter(p => p.region_id === regionId);
   }
   return res.json(out);
 });
 
 router.get('/provinces/:province_id', (req, res) => {
   const id = Number(req.params.province_id);
-  const province = db.geo.provinces.find(p => p.ProvinceID === id);
-  if (!province) return error(res, 404, 'NOT_FOUND', 'Province not found');
+  const province = db.geo.provinces.find(p => p.province_id === id);
+  if (!province) return error(res, 404, 'NOT_FOUND', 'Province not found.');
   return res.json(province);
 });
 
 router.get('/communes', (req, res) => {
   const regionId = req.query.region_id !== undefined ? Number(req.query.region_id) : undefined;
   const provinceId = req.query.province_id !== undefined ? Number(req.query.province_id) : undefined;
-  const actif = parseOptionalBoolean(req.query.actif);
-  if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
+  const active = parseOptionalBoolean(req.query.active);
+  if (active === null) {
+    return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'active' (expected true/false)");
+  }
 
   let out = db.geo.communes;
-  if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.RegionID === regionId);
-  if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.ProvinceID === provinceId);
-  if (actif !== undefined) out = out.filter(c => c.Actif === actif);
+  if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.region_id === regionId);
+  if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.province_id === provinceId);
+  if (active !== undefined) out = out.filter(c => c.is_active === active);
   return res.json(out);
 });
 
 router.get('/communes/:commune_id', (req, res) => {
   const id = Number(req.params.commune_id);
-  const commune = db.geo.communes.find(c => c.CommuneID === id);
+  const commune = db.geo.communes.find(c => c.commune_id === id);
   if (!commune) return error(res, 404, 'NOT_FOUND', 'Commune not found.');
   return res.json(commune);
 });
 
 router.get('/categories', (req, res) => {
-  const actif = parseOptionalBoolean(req.query.actif);
-  if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
+  const active = parseOptionalBoolean(req.query.active);
+  if (active === null) {
+    return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'active' (expected true/false)");
+  }
   let out = db.geo.categories;
-  if (actif !== undefined) out = out.filter(c => c.Actif === actif);
+  if (active !== undefined) out = out.filter(c => c.is_active === active);
   return res.json(out);
 });
 
-router.get('/categories/:categorie_id', (req, res) => {
-  const id = Number(req.params.categorie_id);
-  const categorie = db.geo.categories.find(c => c.CategorieID === id);
-  if (!categorie) return error(res, 404, 'NOT_FOUND', 'Category not found');
-  return res.json(categorie);
+router.get('/categories/:category_id', (req, res) => {
+  const id = Number(req.params.category_id);
+  const category = db.geo.categories.find(c => c.category_id === id);
+  if (!category) return error(res, 404, 'NOT_FOUND', 'Category not found.');
+  return res.json(category);
 });
 
-router.get('/centres', (req, res) => {
+router.get('/centers', (req, res) => {
   const regionId = req.query.region_id !== undefined ? Number(req.query.region_id) : undefined;
   const provinceId = req.query.province_id !== undefined ? Number(req.query.province_id) : undefined;
-  const categorieId = req.query.categorie_id !== undefined ? Number(req.query.categorie_id) : undefined;
+  const categoryId = req.query.category_id !== undefined ? Number(req.query.category_id) : undefined;
   const communeId = req.query.commune_id !== undefined ? Number(req.query.commune_id) : undefined;
-  const actif = parseOptionalBoolean(req.query.actif);
-  if (actif === null) return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'actif' (expected true/false)");
+  const active = parseOptionalBoolean(req.query.active);
+  if (active === null) {
+    return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'active' (expected true/false)");
+  }
 
-  let out = db.geo.centres;
-  if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.RegionID === regionId);
-  if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.ProvinceID === provinceId);
-  if (categorieId !== undefined && !Number.isNaN(categorieId)) out = out.filter(c => c.CategorieID === categorieId);
-  if (communeId !== undefined && !Number.isNaN(communeId)) out = out.filter(c => c.CommuneID === communeId);
-  if (actif !== undefined) out = out.filter(c => c.Actif === actif);
+  let out = db.geo.centers;
+  if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.region_id === regionId);
+  if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.province_id === provinceId);
+  if (categoryId !== undefined && !Number.isNaN(categoryId)) out = out.filter(c => c.category_id === categoryId);
+  if (communeId !== undefined && !Number.isNaN(communeId)) out = out.filter(c => c.commune_id === communeId);
+  if (active !== undefined) out = out.filter(c => c.is_active === active);
   return res.json(out);
 });
 
-router.get('/centres/:centre_id', (req, res) => {
-  const id = Number(req.params.centre_id);
-  const centre = db.geo.centres.find(c => c.CentreID === id);
-  if (!centre) return error(res, 404, 'NOT_FOUND', 'Center not found');
-  return res.json(centre);
+router.get('/centers/:center_id', (req, res) => {
+  const id = Number(req.params.center_id);
+  const center = db.geo.centers.find(c => c.center_id === id);
+  if (!center) return error(res, 404, 'NOT_FOUND', 'Center not found.');
+  return res.json(center);
 });
 
 // ---------------------------------------------------------------------------
@@ -112,15 +118,11 @@ router.get('/referrals', (req, res) => {
 router.post('/referrals', (req, res) => {
   const body = req.body || {};
 
-  if (!body.device_uuid) return error(res, 422, 'VALIDATION_ERROR', "Missing required field: 'device_uuid'");
-  if (!body.center_id) return error(res, 422, 'VALIDATION_ERROR', "Missing required field: 'center_id'");
-  if (!body.source) return error(res, 422, 'VALIDATION_ERROR', "Missing required field: 'source'");
+  const missing = requireFields(body, ['device_uuid', 'center_id', 'source']);
+  if (missing) return error(res, 422, 'VALIDATION_ERROR', missing);
 
   const invalid = validate(body, { source: VALID.center_referral_source });
   if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
-
-  const userExists = db.users.find(u => u.device_uuid === body.device_uuid);
-  if (!userExists) return error(res, 404, 'NOT_FOUND', 'No user found for this device_uuid.');
 
   const referral = {
     id: uuidv4(),
@@ -164,4 +166,3 @@ router.delete('/referrals/:id', (req, res) => {
 });
 
 module.exports = router;
-

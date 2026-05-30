@@ -5,68 +5,68 @@ const db = {
   sessions: [],
   geo: {
     regions: [
-      { RegionID: 1, Nom: 'Rabat-Salé-Kénitra', CodeRegion: 'MA-04', Actif: true },
-      { RegionID: 2, Nom: 'Casablanca-Settat', CodeRegion: 'MA-06', Actif: true },
+      { region_id: 1, name: 'Rabat-Salé-Kénitra', region_code: 'MA-04', is_active: true },
+      { region_id: 2, name: 'Casablanca-Settat', region_code: 'MA-06', is_active: true },
     ],
     provinces: [
-      { ProvinceID: 10, RegionID: 1, Nom: 'Rabat', CodeProvince: 'RBA', Actif: true },
-      { ProvinceID: 11, RegionID: 1, Nom: 'Salé', CodeProvince: 'SAL', Actif: true },
-      { ProvinceID: 20, RegionID: 2, Nom: 'Casablanca', CodeProvince: 'CAS', Actif: true },
+      { province_id: 10, region_id: 1, name: 'Rabat', province_code: 'RBA', is_active: true },
+      { province_id: 11, region_id: 1, name: 'Salé', province_code: 'SAL', is_active: true },
+      { province_id: 20, region_id: 2, name: 'Casablanca', province_code: 'CAS', is_active: true },
     ],
     communes: [
-      { CommuneID: 101, RegionID: 1, ProvinceID: 10, Nom: 'Rabat', CodeCommune: 'RBA-01', Actif: true },
-      { CommuneID: 102, RegionID: 1, ProvinceID: 11, Nom: 'Salé', CodeCommune: 'SAL-01', Actif: true },
-      { CommuneID: 103, RegionID: 2, ProvinceID: 20, Nom: 'Casablanca', CodeCommune: 'CAS-01', Actif: true },
+      { commune_id: 101, region_id: 1, province_id: 10, name: 'Rabat', commune_code: 'RBA-01', is_active: true },
+      { commune_id: 102, region_id: 1, province_id: 11, name: 'Salé', commune_code: 'SAL-01', is_active: true },
+      { commune_id: 103, region_id: 2, province_id: 20, name: 'Casablanca', commune_code: 'CAS-01', is_active: true },
     ],
     categories: [
-      { CategorieID: 3, Libelle: 'Centre de dépistage', Abreviation: 'CD', TypeMilieu: 'U', Actif: true },
-      { CategorieID: 4, Libelle: 'Hôpital', Abreviation: 'HOP', TypeMilieu: 'H', Actif: true },
+      { category_id: 3, label: 'Centre de dépistage', abbreviation: 'CD', environment_type: 'u', is_active: true },
+      { category_id: 4, label: 'Hôpital', abbreviation: 'HOP', environment_type: 'h', is_active: true },
     ],
-    centres: [
+    centers: [
       {
-        CentreID: 120,
-        CodeGeo: 'CEN-0120',
-        Nom: 'Centre Rabat - Exemple',
-        RegionID: 1,
-        ProvinceID: 10,
-        CategorieID: 3,
-        CommuneID: 101,
-        Reseau: 1,
-        Latitude: 34.020882,
-        Longitude: -6.841650,
-        DateMaj: new Date().toISOString(),
-        Actif: true,
-        Commune: 'Rabat',
+        center_id: 120,
+        geo_code: 'CEN-0120',
+        name: 'Centre Rabat - Exemple',
+        region_id: 1,
+        province_id: 10,
+        category_id: 3,
+        commune_id: 101,
+        network: 1,
+        latitude: 34.020882,
+        longitude: -6.841650,
+        updated_at: new Date().toISOString(),
+        is_active: true,
+        commune_name: 'Rabat',
       },
       {
-        CentreID: 121,
-        CodeGeo: 'CEN-0121',
-        Nom: 'Centre Rabat Agdal - Exemple',
-        RegionID: 1,
-        ProvinceID: 10,
-        CategorieID: 4,
-        CommuneID: 101,
-        Reseau: 2,
-        Latitude: 34.004900,
-        Longitude: -6.853000,
-        DateMaj: new Date().toISOString(),
-        Actif: true,
-        Commune: 'Agdal-Ryad',
+        center_id: 121,
+        geo_code: 'CEN-0121',
+        name: 'Centre Rabat Agdal - Exemple',
+        region_id: 1,
+        province_id: 10,
+        category_id: 4,
+        commune_id: 101,
+        network: 2,
+        latitude: 34.004900,
+        longitude: -6.853000,
+        updated_at: new Date().toISOString(),
+        is_active: true,
+        commune_name: 'Agdal-Ryad',
       },
       {
-        CentreID: 122,
-        CodeGeo: 'CEN-0122',
-        Nom: 'Centre Salé - Exemple',
-        RegionID: 1,
-        ProvinceID: 11,
-        CategorieID: 3,
-        CommuneID: 102,
-        Reseau: 1,
-        Latitude: 34.036300,
-        Longitude: -6.798400,
-        DateMaj: new Date().toISOString(),
-        Actif: true,
-        Commune: 'Salé',
+        center_id: 122,
+        geo_code: 'CEN-0122',
+        name: 'Centre Salé - Exemple',
+        region_id: 1,
+        province_id: 11,
+        category_id: 3,
+        commune_id: 102,
+        network: 1,
+        latitude: 34.036300,
+        longitude: -6.798400,
+        updated_at: new Date().toISOString(),
+        is_active: true,
+        commune_name: 'Salé',
       },
     ],
     referrals: [],
@@ -74,19 +74,20 @@ const db = {
 };
 
 const VALID = {
-  user_type:        ['YOUTH', 'KEY_POPULATION', 'MIGRANT', 'GENERAL_PUBLIC'],
-  age_range:        ['LESS_18', '18_25', '26_35', '36_50', 'OVER_50'],
-  gender:           ['MALE', 'FEMALE', 'PREFER_NOT_TO_SAY'],
-  family_situation: ['MARRIED', 'SINGLE', 'PREFER_NOT_TO_SAY'],
-  language:         ['FR', 'AR'],
-  platform:         ['ANDROID', 'IOS'],
-  center_referral_source: ['MAP', 'QUIZ', 'CHATBOT', 'NOTIFICATION'],
+  user_type: ['youth', 'key_population', 'migrant', 'general_public'],
+  age_range: ['less_18', '18_25', '26_35', '36_50', 'over_50'],
+  gender: ['male', 'female', 'prefer_not_to_say'],
+  family_situation: ['married', 'single', 'prefer_not_to_say'],
+  language: ['fr', 'ar'],
+  platform: ['android', 'ios'],
+  center_referral_source: ['map', 'quiz', 'chatbot', 'notification'],
+  environment_type: ['r', 'u', 's', 'h'],
 };
 
 function validate(body, rules) {
   for (const [field, values] of Object.entries(rules)) {
     if (body[field] !== undefined && !values.includes(body[field])) {
-      return `Invalid value '${body[field]}' for field '${field}'. Allowed: ${values.join(', ')}`;
+      return `Invalid value for field '${field}'.`;
     }
   }
   return null;
@@ -108,7 +109,7 @@ function validateArray(value, allowedValues, fieldName) {
   if (value.length === 0) return `Field '${fieldName}' must contain at least one value`;
   for (const item of value) {
     if (!allowedValues.includes(item)) {
-      return `Invalid value '${item}' in '${fieldName}'. Allowed: ${allowedValues.join(', ')}`;
+      return `Invalid value for field '${fieldName}'.`;
     }
   }
   return null;
@@ -116,7 +117,9 @@ function validateArray(value, allowedValues, fieldName) {
 
 function requireFields(body, fields) {
   for (const field of fields) {
-    if (!body[field]) return `Missing required field: '${field}'`;
+    if (body[field] === undefined || body[field] === null || body[field] === '') {
+      return `Missing required field: '${field}'`;
+    }
   }
   return null;
 }

@@ -1,4 +1,4 @@
-// mock-server/server.js
+// mock-server/server.js — MSPS Dépistage API v2.0.0 (English snake_case)
 
 const express = require('express');
 const { db } = require('./db');
@@ -13,13 +13,12 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes
+// Routes (see api-contract.yaml v2.0.0)
 // ---------------------------------------------------------------------------
 
 app.use('/users', usersRouter);
 app.use('/sessions', sessionsRouter);
 app.use('/geo', geoRouter);
-
 
 // ---------------------------------------------------------------------------
 // Debug route — see current db state
