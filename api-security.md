@@ -12,7 +12,7 @@ App launch (1ère fois)
  
 ---
  
-## JWT — Oui, c'est adapté ici
+## JWT — adapté meme sans login
  
 Même sans login/password, JWT reste pertinent car :
  
