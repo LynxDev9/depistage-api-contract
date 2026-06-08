@@ -4,6 +4,17 @@ info:
   description: |
     API contract for MSPS Dépistage — anonymous users, sessions, and geolocation referentials.
 
+    **v2.1.0 — Anonymous mobile bearer JWT (Phase 13)**
+
+    Protected mobile **write** endpoints require `Authorization: Bearer <access_token>`.
+    The token is a short-lived anonymous JWT returned by `POST /sessions` (and may be re-issued on
+    `PATCH /sessions/{id}`). It represents an anonymous device/session only — no personal mobile
+    accounts, no refresh tokens in the MVP.
+
+    Device registration (`POST /users`) and session start (`POST /sessions`) remain callable without
+    a bearer token so the app can bootstrap an anonymous session. Obtain the bearer token after
+    device/profile registration by calling `POST /sessions`.
+
     **v2.0.0 — English snake_case (breaking change)**
 
     All public surfaces use **English snake_case**: URL paths, query parameters, JSON property names,
@@ -19,7 +30,7 @@ info:
     **Identifiers**
     - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
     - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
-  version: 2.0.0
+  version: 2.1.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -37,7 +48,9 @@ tags:
   - name: DeviceProfiles
     description: Anonymous device profile management (device-based, no login)
   - name: Sessions
-    description: App session tracking
+    description: |
+      App session tracking and anonymous mobile JWT issuance.
+      `POST /sessions` returns a short-lived bearer token for protected write endpoints.
   - name: Geolocation (CMS)
     description: |
       Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -53,7 +66,10 @@ paths:
     post:
       tags: [DeviceProfiles]
       summary: Register a new anonymous user
-      description: Called once on first app launch. Creates a user identified by device_uuid.
+      description: |
+        Called once on first app launch. Creates a user identified by device_uuid.
+        Does not return a JWT. After registration, obtain an anonymous bearer token by calling
+        `POST /sessions`.
       requestBody:
         required: true
         content:
@@ -189,7 +205,13 @@ paths:
     post:
       tags: [Sessions]
       summary: Start a new app session
-      description: Called each time the app is opened (foreground). Returns a session id to be used when closing.
+      description: |
+        Called each time the app is opened (foreground). Returns a session id to use when closing
+        the session and a short-lived anonymous JWT (`access_token`) for protected mobile writes.
+
+        Does not require `Authorization`. The mobile app should store `access_token` and send
+        `Authorization: Bearer <access_token>` on subsequent write calls until `expires_in` elapses,
+        then start a new session to obtain a fresh token.
       requestBody:
         required: true
         content:
@@ -210,10 +232,13 @@ paths:
               example:
                 id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                started_at: "2025-01-15T10:30:00Z"
+                started_at: "2026-06-04T12:00:00Z"
                 duration_sec: null
                 platform: "android"
                 app_version: "1.0.0"
+                access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                token_type: "Bearer"
+                expires_in: 900
         '404':
           description: device_uuid not registered
           content:
@@ -237,7 +262,11 @@ paths:
     patch:
       tags: [Sessions]
       summary: End a session
-      description: Called when the app goes to background or is closed. Sends the session duration.
+      description: |
+        Called when the app goes to background or is closed. Sends the session duration.
+        Requires a valid anonymous bearer token for the same `device_uuid` / session.
+      security:
+        - MobileAnonymousBearer: []
       parameters:
         - name: id
           in: path
@@ -268,6 +297,11 @@ paths:
                 duration_sec: 142
                 platform: "android"
                 app_version: "1.0.0"
+                access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example"
+                token_type: "Bearer"
+                expires_in: 900
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Session not found
           content:
@@ -575,7 +609,11 @@ paths:
     get:
       tags: [Geolocation (App)]
       summary: List center referrals
-      description: CRUD table in app schema.
+      description: |
+        Anonymous mobile interaction data in the app schema (not public CMS/reference data).
+        Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       parameters:
         - name: device_uuid
           in: query
@@ -593,11 +631,15 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CenterReferral'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
     post:
       tags: [Geolocation (App)]
       summary: Create a center referral
-      description: CRUD table in app schema.
+      description: CRUD table in app schema. Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -624,6 +666,8 @@ paths:
                 quiz_result_id: null
                 source: "map"
                 followed_up: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '422':
           description: Validation error
           content:
@@ -635,6 +679,11 @@ paths:
     get:
       tags: [Geolocation (App)]
       summary: Get referral by id
+      description: |
+        Anonymous mobile interaction data in the app schema (not public CMS/reference data).
+        Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       parameters:
         - name: id
           in: path
@@ -649,6 +698,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CenterReferral'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Referral not found
           content:
@@ -659,6 +710,9 @@ paths:
     patch:
       tags: [Geolocation (App)]
       summary: Update referral
+      description: Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -682,6 +736,8 @@ paths:
                 quiz_result_id: null
                 source: "chatbot"
                 followed_up: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Referral not found
           content:
@@ -698,9 +754,14 @@ paths:
     delete:
       tags: [Geolocation (App)]
       summary: Delete referral
+      description: Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       responses:
         '204':
           description: Referral deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Referral not found
           content:
@@ -722,6 +783,10 @@ paths:
 
         Optional `metadata` must not contain personal data, names, phone numbers, exact GPS
         coordinates, free-text health declarations, or full chatbot transcripts.
+
+        Requires anonymous mobile bearer token from `POST /sessions`.
+      security:
+        - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -751,6 +816,8 @@ paths:
                 $ref: '#/components/schemas/AppEventAcceptedResponse'
               example:
                 accepted: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '422':
           description: Validation error
           content:
@@ -765,6 +832,18 @@ paths:
 
 components:
 
+  securitySchemes:
+    MobileAnonymousBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived anonymous mobile JWT issued by the session flow.
+        It represents an anonymous device/session, not a personal user account.
+        Send as `Authorization: Bearer <access_token>`. Default lifetime is 900 seconds
+        (15 minutes) per `expires_in` in `SessionResponse`. Renew by calling `POST /sessions`
+        again when the token expires. Refresh tokens are not part of the MVP contract.
+
   parameters:
     DeviceUUID:
       name: device_uuid
@@ -776,6 +855,16 @@ components:
       example: "550e8400-e29b-41d4-a716-446655440000"
 
   responses:
+
+    Unauthorized:
+      description: Missing, invalid, or expired anonymous mobile access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "UNAUTHORIZED"
+            message: "Missing, invalid, or expired access token."
 
     TooManyRequests:
       description: Too many requests from the same client, device, IP, or authenticated user.
@@ -1129,10 +1218,26 @@ components:
 
     SessionResponse:
       type: object
+      description: |
+        Session record with anonymous mobile JWT credentials.
+        The access token represents an anonymous device/session, not a personal user account.
+        It is short-lived; the mobile app should renew it by calling `POST /sessions` again when
+        `expires_in` elapses or a protected write returns `401`. Refresh tokens are not part of the
+        MVP contract.
+      required:
+        - id
+        - device_uuid
+        - started_at
+        - platform
+        - app_version
+        - access_token
+        - token_type
+        - expires_in
       properties:
         id:
           type: string
           format: uuid
+          description: Session identifier (`session_id` in JWT claims).
         device_uuid:
           type: string
           format: uuid
@@ -1146,6 +1251,19 @@ components:
           $ref: '#/components/schemas/Platform'
         app_version:
           type: string
+        access_token:
+          type: string
+          description: Short-lived anonymous mobile JWT access token issued for the anonymous device/session.
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Bearer token type for the anonymous mobile access token.
+        expires_in:
+          type: integer
+          format: int32
+          example: 900
+          minimum: 1
+          description: Access token lifetime in seconds.
 
     # ── Error ──────────────────────────────────────────────
 
