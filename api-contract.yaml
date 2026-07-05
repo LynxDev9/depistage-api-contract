@@ -2,7 +2,16 @@ openapi: 3.0.3
 info:
   title: App API
   description: |
-    API contract for MSPS Dépistage — anonymous users, sessions, and geolocation referentials.
+    **v2.2.0 - Mobile content consumption API (Phase 19)**
+
+    Additive, backward-compatible public read endpoints for published educational content:
+    `GET /content/thematics`, `GET /content`, and `GET /content/{content_id}`.
+    Content reads are public for the MVP; analytics and tracking remain separate through
+    `POST /events`.
+    Content `content_type` values intentionally use CMS content codes: `TEXT`,
+    `INFOGRAPHIC`, `VIDEO`, and `AUDIO`.
+
+    API contract for MSPS Dépistage — anonymous users, sessions, geolocation referentials, partner links, analytics ingestion, and published educational content.
 
     **v2.1.0 — Anonymous mobile bearer JWT (Phase 13)**
 
@@ -30,7 +39,7 @@ info:
     **Identifiers**
     - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
     - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
-  version: 2.1.0
+  version: 2.2.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -59,6 +68,14 @@ tags:
     description: User interactions with centers (App schema)
   - name: Analytics
     description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard queries.
+  - name: Content
+    description: |
+      Published educational content reads (`cms.ContentItem`, `cms.ContentAsset`, `cms.Thematic`).
+      Public read-only endpoints for the mobile app. Only `PUBLISHED` content is visible.
+  - name: Partner links
+    description: |
+      Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
+      Only platforms with a configured absolute URL are returned.
 
 paths:
 
@@ -862,6 +879,223 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /content/thematics:
+    get:
+      tags: [Content]
+      summary: List content thematics
+      description: |
+        Returns active educational content thematics available to the mobile app.
+        This MVP read endpoint is public and does not require `MobileAnonymousBearer`.
+        Analytics and tracking remain separate through `POST /events`.
+      responses:
+        '200':
+          description: Active content thematics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContentThematic'
+              example:
+                - thematic_id: 1
+                  name: "VIH"
+                  disease: "HIV"
+                  sort_order: 10
+                  is_active: true
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /content:
+    get:
+      tags: [Content]
+      summary: List published content
+      description: |
+        Returns a paginated list of published educational content visible to the mobile app.
+        This MVP read endpoint is public and does not require `MobileAnonymousBearer`.
+        Analytics and tracking remain separate through `POST /events`.
+
+        Visibility rules:
+        - Only `PUBLISHED` content is returned.
+        - `DRAFT`, `READY_FOR_REVIEW`, and `ARCHIVED` content is hidden.
+        - `TEXT` content may be returned without an asset.
+        - `VIDEO`, `AUDIO`, and `INFOGRAPHIC` content must have at least one `READY` asset with a non-empty public delivery URL.
+        - Internal fields must not be exposed.
+
+        Public delivery asset selection:
+        - `TEXT` content does not require `asset_url`.
+        - `INFOGRAPHIC` content uses a READY public infographic delivery asset.
+        - `VIDEO` content uses a READY public mobile video asset or HLS playlist.
+        - `AUDIO` content uses a READY public audio delivery asset.
+        - Thumbnail assets are returned only through `thumbnail_url`.
+        - Original/source files, text sources, documents, and HLS segments must never be returned as `asset_url` in Phase 19.
+
+        Sorting is deterministic:
+        - `display_order` ascending.
+        - `published_at` descending.
+        - `content_id` ascending.
+
+        Because this endpoint documents `429`, the Phase 19 implementation must include
+        a `ContentReads` rate-limit policy.
+      parameters:
+        - name: language
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Language'
+          description: Filter by content language.
+        - name: thematic_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by thematic.
+        - name: content_type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ContentType'
+          description: Filter by content type.
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number.
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Number of items per page.
+      responses:
+        '200':
+          description: Published content page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPage'
+              example:
+                items:
+                  - content_id: 12
+                    thematic_id: 1
+                    thematic_name: "VIH"
+                    title: "Comprendre le dépistage du VIH"
+                    summary: "Résumé court..."
+                    content_type: "VIDEO"
+                    language: "fr"
+                    asset_url: "https://cdn.example.msps.test/video.mp4"
+                    thumbnail_url: null
+                    duration_seconds: 180
+                    published_at: "2026-07-03T12:00:00Z"
+                page: 1
+                page_size: 20
+                total_count: 1
+        '422':
+          description: Validation error (invalid filters or pagination values)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid pagination value."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /content/{content_id}:
+    get:
+      tags: [Content]
+      summary: Get published content detail
+      description: |
+        Returns detail for one published educational content item visible to the mobile app.
+        This MVP read endpoint is public and does not require `MobileAnonymousBearer`.
+        Analytics and tracking remain separate through `POST /events`.
+
+        Visibility rules:
+        - Return `404` when content does not exist.
+        - Return `404` when content exists but is not `PUBLISHED`.
+        - Return `404` when media content exists but has no `READY` public delivery asset.
+        - Do not reveal whether unpublished or internal content exists.
+
+        Public delivery asset selection:
+        - `TEXT` content does not require `asset_url`.
+        - `INFOGRAPHIC` content uses a READY public infographic delivery asset.
+        - `VIDEO` content uses a READY public mobile video asset or HLS playlist.
+        - `AUDIO` content uses a READY public audio delivery asset.
+        - Thumbnail assets are returned only through `thumbnail_url`.
+        - Original/source files, text sources, documents, and HLS segments must never be returned as `asset_url` in Phase 19.
+
+        Because this endpoint documents `429`, the Phase 19 implementation must include
+        a `ContentReads` rate-limit policy.
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 12
+      responses:
+        '200':
+          description: Published content detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentDetail'
+              example:
+                content_id: 12
+                thematic_id: 1
+                thematic_name: "VIH"
+                title: "Comprendre le dépistage du VIH"
+                summary: "Résumé court..."
+                content_type: "VIDEO"
+                language: "fr"
+                asset_url: "https://cdn.example.msps.test/video.mp4"
+                thumbnail_url: null
+                duration_seconds: 180
+                source_name: "MSPS"
+                source_reference: "Référence officielle"
+                published_at: "2026-07-03T12:00:00Z"
+        '404':
+          description: Content not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Content not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /partner-links:
+    get:
+      tags: [Partner links]
+      summary: List published partner platform links
+      description: |
+        Read-only curated partner URLs from the CMS schema.
+        Returns only platforms with a non-empty absolute URL, ordered SIHATI, SANTE_JEUNES, BILAHARAJ, OTHER.
+      responses:
+        '200':
+          description: Partner platform links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PartnerLink'
+              example:
+                - source_platform: "SIHATI"
+                  display_label: "SIHATI"
+                  url: "https://sihati.example.msps.test"
+                - source_platform: "SANTE_JEUNES"
+                  display_label: "Sante Jeunes"
+                  url: "https://santejeunes.example.msps.test"
+
 components:
 
   securitySchemes:
@@ -976,6 +1210,10 @@ components:
         - faq
         - session
 
+    ContentType:
+      type: string
+      enum: [TEXT, INFOGRAPHIC, VIDEO, AUDIO]
+
     # ── DeviceProfile ──────────────────────────────────────
 
     CreateDeviceProfileRequest:
@@ -1055,6 +1293,151 @@ components:
           format: date-time
 
     # ── Geolocation (CMS) ──────────────────────────────────
+
+    # ── Geolocation (CMS) ──────────────────────────────────
+
+    ContentThematic:
+      type: object
+      required: [thematic_id, name, disease, sort_order, is_active]
+      properties:
+        thematic_id:
+          type: integer
+        name:
+          type: string
+        disease:
+          type: string
+        sort_order:
+          type: integer
+        is_active:
+          type: boolean
+
+    ContentPage:
+      type: object
+      required: [items, page, page_size, total_count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentListItem'
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 50
+        total_count:
+          type: integer
+          minimum: 0
+
+    ContentListItem:
+      type: object
+      required:
+        - content_id
+        - thematic_id
+        - thematic_name
+        - title
+        - summary
+        - content_type
+        - language
+        - asset_url
+        - thumbnail_url
+        - duration_seconds
+        - published_at
+      properties:
+        content_id:
+          type: integer
+        thematic_id:
+          type: integer
+        thematic_name:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        content_type:
+          $ref: '#/components/schemas/ContentType'
+        language:
+          $ref: '#/components/schemas/Language'
+        asset_url:
+          type: string
+          format: uri
+          nullable: true
+        thumbnail_url:
+          type: string
+          format: uri
+          nullable: true
+        duration_seconds:
+          type: integer
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ContentDetail:
+      type: object
+      required:
+        - content_id
+        - thematic_id
+        - thematic_name
+        - title
+        - summary
+        - content_type
+        - language
+        - asset_url
+        - thumbnail_url
+        - duration_seconds
+        - source_name
+        - source_reference
+        - published_at
+      properties:
+        content_id:
+          type: integer
+        thematic_id:
+          type: integer
+        thematic_name:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        content_type:
+          $ref: '#/components/schemas/ContentType'
+        language:
+          $ref: '#/components/schemas/Language'
+        asset_url:
+          type: string
+          format: uri
+          nullable: true
+        thumbnail_url:
+          type: string
+          format: uri
+          nullable: true
+        duration_seconds:
+          type: integer
+          nullable: true
+        source_name:
+          type: string
+        source_reference:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PartnerLink:
+      type: object
+      required: [source_platform, display_label, url]
+      properties:
+        source_platform:
+          type: string
+          enum: [SIHATI, SANTE_JEUNES, BILAHARAJ, OTHER]
+        display_label:
+          type: string
+        url:
+          type: string
+          format: uri
 
     Region:
       type: object
