@@ -2,6 +2,15 @@ openapi: 3.0.3
 info:
   title: App API
   description: |
+    **v2.3.0 — Mobile JWT ownership hardening (Phase 13 hotfix)**
+
+    Security hardening for anonymous mobile bearer JWTs:
+    - `GET /users/{device_uuid}` and `PATCH /users/{device_uuid}` now require `MobileAnonymousBearer`; the route `device_uuid` must match the JWT `device_uuid` claim.
+    - `PATCH /sessions/{id}` requires the route `id` to match the JWT `session_id` claim.
+    - `POST /events` derives `device_uuid` and `session_id` from the JWT. Body values are optional for client convenience, but when provided they must match the JWT claims.
+    - `/geo/referrals` is scoped to the authenticated JWT `device_uuid`. Listing always returns only the caller device's referrals. Creating a referral requires the body `device_uuid` to match the JWT claim. Referral id operations return `404` when the referral does not belong to the authenticated device, to avoid revealing another device's referral existence.
+    - A valid token used against the wrong route/body/query owner returns `403 FORBIDDEN`, except referral id ownership mismatches, which intentionally return `404 NOT_FOUND`.
+
     **v2.2.0 - Mobile content consumption API (Phase 19)**
 
     Additive, backward-compatible public read endpoints for published educational content:
@@ -39,43 +48,44 @@ info:
     **Identifiers**
     - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
     - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
-  version: 2.2.0
+  version: 2.3.0
 
 servers:
   # Added by API Auto Mocking Plugin
   # Added by API Auto Mocking Plugin
-  - description: SwaggerHub API Auto Mocking
-    url: https://virtserver.swaggerhub.com/lynxdev99organizatio/DepistageMSPS/1.0.0
-  - description: SwaggerHub API Auto Mocking
-    url: https://virtserver.swaggerhub.com/lynxdev99organizatio/Depistage/1.0.0
-  - url: http://localhost:4010
-    description: Express mock server (local dev)
-  - url: https://api.yourapp.com/v1
-    description: Production
+- description: SwaggerHub API Auto Mocking
+  url: https://virtserver.swaggerhub.com/lynxdev99organizatio/DepistageMSPS/1.0.0
+- description: SwaggerHub API Auto Mocking
+  url: https://virtserver.swaggerhub.com/lynxdev99organizatio/Depistage/1.0.0
+- url: http://localhost:4010
+  description: Express mock server (local dev)
+- url: https://api.yourapp.com/v1
+  description: Production
 
 tags:
-  - name: DeviceProfiles
-    description: Anonymous device profile management (device-based, no login)
-  - name: Sessions
-    description: |
-      App session tracking and anonymous mobile JWT issuance.
-      `POST /sessions` returns a short-lived bearer token for protected write endpoints.
-  - name: Geolocation (CMS)
-    description: |
-      Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
-      (`region_id`, `name`, `is_active`). Reference data is cached server-side (~30 minutes).
-  - name: Geolocation (App)
-    description: User interactions with centers (App schema)
-  - name: Analytics
-    description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard queries.
-  - name: Content
-    description: |
-      Published educational content reads (`cms.ContentItem`, `cms.ContentAsset`, `cms.Thematic`).
-      Public read-only endpoints for the mobile app. Only `PUBLISHED` content is visible.
-  - name: Partner links
-    description: |
-      Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
-      Only platforms with a configured absolute URL are returned.
+- name: DeviceProfiles
+  description: Anonymous device profile management (device-based, no login)
+- name: Sessions
+  description: |
+    App session tracking and anonymous mobile JWT issuance.
+    `POST /sessions` returns a short-lived bearer token for protected write endpoints.
+- name: Geolocation (CMS)
+  description: |
+    Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
+    (`region_id`, `name`, `is_active`). Reference data is cached server-side (~30 minutes).
+- name: Geolocation (App)
+  description: User interactions with centers (App schema)
+- name: Analytics
+  description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard 
+    queries.
+- name: Content
+  description: |
+    Published educational content reads (`cms.ContentItem`, `cms.ContentAsset`, `cms.Thematic`).
+    Public read-only endpoints for the mobile app. Only `PUBLISHED` content is visible.
+- name: Partner links
+  description: |
+    Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
+    Only platforms with a configured absolute URL are returned.
 
 paths:
 
@@ -113,7 +123,7 @@ paths:
                 age_range: "18_25"
                 gender: "male"
                 language: "fr"
-                is_pregnant: null
+                is_pregnant:
                 fcm_token: "fcm_token_example_abc123"
                 created_at: "2025-01-15T10:30:00Z"
         '409':
@@ -143,9 +153,12 @@ paths:
     get:
       tags: [DeviceProfiles]
       summary: Get user profile
-      description: Returns the profile of the user identified by device_uuid.
+      description: |
+        Returns the profile of the user identified by device_uuid.
+
+        Requires `MobileAnonymousBearer`. The path `device_uuid` must match the JWT `device_uuid` claim. A token for another device returns `403 FORBIDDEN`.
       parameters:
-        - $ref: '#/components/parameters/DeviceUUID'
+      - $ref: '#/components/parameters/DeviceUUID'
       responses:
         '200':
           description: User profile returned
@@ -159,7 +172,7 @@ paths:
                 age_range: "18_25"
                 gender: "male"
                 language: "fr"
-                is_pregnant: null
+                is_pregnant:
                 fcm_token: "fcm_token_example_abc123"
                 created_at: "2025-01-15T10:30:00Z"
         '404':
@@ -172,12 +185,23 @@ paths:
                 error: "NOT_FOUND"
                 message: "No user found for this device_uuid."
 
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      security:
+      - MobileAnonymousBearer: []
     patch:
       tags: [DeviceProfiles]
       summary: Update user profile
-      description: Update mutable fields — language, fcm_token, user_type, etc.
+      description: |
+        Update mutable fields — language, fcm_token, user_type, etc.
+
+        Requires `MobileAnonymousBearer`. The path `device_uuid` must match the JWT `device_uuid` claim. A token for another device returns `403 FORBIDDEN`.
       parameters:
-        - $ref: '#/components/parameters/DeviceUUID'
+      - $ref: '#/components/parameters/DeviceUUID'
       requestBody:
         required: true
         content:
@@ -200,7 +224,7 @@ paths:
                 age_range: "18_25"
                 gender: "male"
                 language: "ar"
-                is_pregnant: null
+                is_pregnant:
                 fcm_token: "new_fcm_token_xyz789"
                 created_at: "2025-01-15T10:30:00Z"
         '404':
@@ -226,6 +250,12 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      security:
+      - MobileAnonymousBearer: []
   /sessions:
     post:
       tags: [Sessions]
@@ -258,7 +288,7 @@ paths:
                 id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 started_at: "2026-06-04T12:00:00Z"
-                duration_sec: null
+                duration_sec:
                 platform: "android"
                 app_version: "1.0.0"
                 access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -294,16 +324,18 @@ paths:
       description: |
         Called when the app goes to background or is closed. Sends the session duration.
         Requires a valid anonymous bearer token for the same `device_uuid` / session.
+
+        The path `id` must match the JWT `session_id` claim. A valid token for a different session returns `403 FORBIDDEN`.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
       requestBody:
         required: true
         content:
@@ -347,6 +379,8 @@ paths:
 
   # ── Geolocation (CMS, read-only) ───────────────────────────────────────────
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /geo/regions:
     get:
       tags: [Geolocation (CMS)]
@@ -362,10 +396,10 @@ paths:
                 items:
                   $ref: '#/components/schemas/Region'
               example:
-                - region_id: 1
-                  name: "Tanger-Tétouan-Al Hoceima"
-                  region_code: "01"
-                  is_active: true
+              - region_id: 1
+                name: "Tanger-Tétouan-Al Hoceima"
+                region_code: "01"
+                is_active: true
 
   /geo/regions/{region_id}:
     get:
@@ -373,12 +407,12 @@ paths:
       summary: Get region by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: region_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 1
+      - name: region_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 1
       responses:
         '200':
           description: Region
@@ -402,12 +436,12 @@ paths:
       summary: List provinces
       description: Read-only referential (CMS schema).
       parameters:
-        - name: region_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter provinces by region_id.
+      - name: region_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter provinces by region_id.
       responses:
         '200':
           description: Provinces list
@@ -424,12 +458,12 @@ paths:
       summary: Get province by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: province_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 10
+      - name: province_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 10
       responses:
         '200':
           description: Province
@@ -453,24 +487,24 @@ paths:
       summary: List communes
       description: Read-only referential (CMS schema).
       parameters:
-        - name: region_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter communes by region_id.
-        - name: province_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter communes by province_id.
-        - name: active
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Filter by is_active.
+      - name: region_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter communes by region_id.
+      - name: province_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter communes by province_id.
+      - name: active
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Filter by is_active.
       responses:
         '200':
           description: Communes list
@@ -487,12 +521,12 @@ paths:
       summary: Get commune by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: commune_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 101
+      - name: commune_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 101
       responses:
         '200':
           description: Commune
@@ -516,12 +550,12 @@ paths:
       summary: List center categories
       description: Read-only referential (CMS schema).
       parameters:
-        - name: active
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Filter by is_active.
+      - name: active
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Filter by is_active.
       responses:
         '200':
           description: Categories list
@@ -538,12 +572,12 @@ paths:
       summary: Get category by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: category_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 3
+      - name: category_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 3
       responses:
         '200':
           description: Category
@@ -567,36 +601,36 @@ paths:
       summary: List centers
       description: Read-only referential (CMS schema).
       parameters:
-        - name: region_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter by region_id.
-        - name: province_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter by province_id.
-        - name: category_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter by category_id.
-        - name: commune_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter by commune_id.
-        - name: active
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Filter by is_active.
+      - name: region_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by region_id.
+      - name: province_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by province_id.
+      - name: category_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by category_id.
+      - name: commune_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by commune_id.
+      - name: active
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Filter by is_active.
       responses:
         '200':
           description: Centers list
@@ -613,12 +647,12 @@ paths:
       summary: Get center by id
       description: Read-only referential (CMS schema).
       parameters:
-        - name: center_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 120
+      - name: center_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 120
       responses:
         '200':
           description: Center
@@ -645,16 +679,32 @@ paths:
       description: |
         Anonymous mobile interaction data in the app schema (not public CMS/reference data).
         Requires anonymous mobile bearer token from `POST /sessions`.
+
+        Results are always scoped to the JWT `device_uuid`. If the optional `device_uuid` query parameter is sent, it must match the JWT claim or the API returns `403 FORBIDDEN`.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       parameters:
-        - name: device_uuid
-          in: query
-          required: false
-          schema:
-            type: string
-            format: uuid
-          description: Filter by user device_uuid.
+      - name: device_uuid
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Optional compatibility filter. If provided, it must match the JWT `device_uuid` claim. The API 
+          always scopes results to the authenticated device.
+      - name: center_id
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+        description: Optional center filter applied within the authenticated device scope.
+      - name: source
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/CenterReferralSource'
+        description: Optional referral source filter applied within the authenticated device scope.
       responses:
         '200':
           description: Referrals list
@@ -669,12 +719,17 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [Geolocation (App)]
       summary: Create a center referral
-      description: CRUD table in app schema. Requires anonymous mobile bearer token from `POST /sessions`.
+      description: |
+        CRUD table in app schema. Requires anonymous mobile bearer token from `POST /sessions`.
+
+        The request body `device_uuid` must match the JWT `device_uuid` claim. The server uses the JWT device as the authoritative owner of the created referral.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -684,7 +739,7 @@ paths:
             example:
               device_uuid: "550e8400-e29b-41d4-a716-446655440000"
               center_id: 120
-              quiz_result_id: null
+              quiz_result_id:
               source: "map"
               followed_up: false
       responses:
@@ -698,7 +753,7 @@ paths:
                 id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 center_id: 120
-                quiz_result_id: null
+                quiz_result_id:
                 source: "map"
                 followed_up: false
         '401':
@@ -714,6 +769,8 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /geo/referrals/{id}:
     get:
       tags: [Geolocation (App)]
@@ -721,15 +778,17 @@ paths:
       description: |
         Anonymous mobile interaction data in the app schema (not public CMS/reference data).
         Requires anonymous mobile bearer token from `POST /sessions`.
+
+        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         '200':
           description: Referral
@@ -748,12 +807,17 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
     patch:
       tags: [Geolocation (App)]
       summary: Update referral
-      description: Requires anonymous mobile bearer token from `POST /sessions`.
+      description: |
+        Requires anonymous mobile bearer token from `POST /sessions`.
+
+        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -774,7 +838,7 @@ paths:
                 id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 center_id: 120
-                quiz_result_id: null
+                quiz_result_id:
                 source: "chatbot"
                 followed_up: true
         '401':
@@ -796,12 +860,17 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [Geolocation (App)]
       summary: Delete referral
-      description: Requires anonymous mobile bearer token from `POST /sessions`.
+      description: |
+        Requires anonymous mobile bearer token from `POST /sessions`.
+
+        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       responses:
         '204':
           description: Referral deleted
@@ -816,6 +885,8 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /events:
     post:
       tags: [Analytics]
@@ -832,8 +903,10 @@ paths:
         coordinates, free-text health declarations, or full chatbot transcripts.
 
         Requires anonymous mobile bearer token from `POST /sessions`.
+
+        The server derives the authoritative `device_uuid` and `session_id` from the JWT claims. Request body `device_uuid` and `session_id` are optional for compatibility; if provided, each value must match the JWT claim or the API returns `403 FORBIDDEN`.
       security:
-        - MobileAnonymousBearer: []
+      - MobileAnonymousBearer: []
       requestBody:
         required: true
         content:
@@ -846,7 +919,7 @@ paths:
               event_name: "content_viewed"
               module: "content"
               content_id: 10
-              center_id: null
+              center_id:
               region_id: 1
               province_id: 10
               language: "fr"
@@ -879,6 +952,8 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /content/thematics:
     get:
       tags: [Content]
@@ -897,11 +972,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/ContentThematic'
               example:
-                - thematic_id: 1
-                  name: "VIH"
-                  disease: "HIV"
-                  sort_order: 10
-                  is_active: true
+              - thematic_id: 1
+                name: "VIH"
+                disease: "HIV"
+                sort_order: 10
+                is_active: true
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -937,41 +1012,41 @@ paths:
         Because this endpoint documents `429`, the Phase 19 implementation must include
         a `ContentReads` rate-limit policy.
       parameters:
-        - name: language
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/Language'
-          description: Filter by content language.
-        - name: thematic_id
-          in: query
-          required: false
-          schema:
-            type: integer
-          description: Filter by thematic.
-        - name: content_type
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/ContentType'
-          description: Filter by content type.
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-          description: Page number.
-        - name: page_size
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 50
-            default: 20
-          description: Number of items per page.
+      - name: language
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Language'
+        description: Filter by content language.
+      - name: thematic_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Filter by thematic.
+      - name: content_type
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ContentType'
+        description: Filter by content type.
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        description: Number of items per page.
       responses:
         '200':
           description: Published content page
@@ -981,17 +1056,17 @@ paths:
                 $ref: '#/components/schemas/ContentPage'
               example:
                 items:
-                  - content_id: 12
-                    thematic_id: 1
-                    thematic_name: "VIH"
-                    title: "Comprendre le dépistage du VIH"
-                    summary: "Résumé court..."
-                    content_type: "VIDEO"
-                    language: "fr"
-                    asset_url: "https://cdn.example.msps.test/video.mp4"
-                    thumbnail_url: null
-                    duration_seconds: 180
-                    published_at: "2026-07-03T12:00:00Z"
+                - content_id: 12
+                  thematic_id: 1
+                  thematic_name: "VIH"
+                  title: "Comprendre le dépistage du VIH"
+                  summary: "Résumé court..."
+                  content_type: "VIDEO"
+                  language: "fr"
+                  asset_url: "https://cdn.example.msps.test/video.mp4"
+                  thumbnail_url:
+                  duration_seconds: 180
+                  published_at: "2026-07-03T12:00:00Z"
                 page: 1
                 page_size: 20
                 total_count: 1
@@ -1033,12 +1108,12 @@ paths:
         Because this endpoint documents `429`, the Phase 19 implementation must include
         a `ContentReads` rate-limit policy.
       parameters:
-        - name: content_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          example: 12
+      - name: content_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 12
       responses:
         '200':
           description: Published content detail
@@ -1055,7 +1130,7 @@ paths:
                 content_type: "VIDEO"
                 language: "fr"
                 asset_url: "https://cdn.example.msps.test/video.mp4"
-                thumbnail_url: null
+                thumbnail_url:
                 duration_seconds: 180
                 source_name: "MSPS"
                 source_reference: "Référence officielle"
@@ -1089,12 +1164,12 @@ paths:
                 items:
                   $ref: '#/components/schemas/PartnerLink'
               example:
-                - source_platform: "SIHATI"
-                  display_label: "SIHATI"
-                  url: "https://sihati.example.msps.test"
-                - source_platform: "SANTE_JEUNES"
-                  display_label: "Sante Jeunes"
-                  url: "https://santejeunes.example.msps.test"
+              - source_platform: "SIHATI"
+                display_label: "SIHATI"
+                url: "https://sihati.example.msps.test"
+              - source_platform: "SANTE_JEUNES"
+                display_label: "Sante Jeunes"
+                url: "https://santejeunes.example.msps.test"
 
 components:
 
@@ -1158,6 +1233,15 @@ components:
             error: "PAYLOAD_TOO_LARGE"
             message: "Request body is too large."
 
+    Forbidden:
+      description: Authenticated token cannot access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: FORBIDDEN
+            message: The access token does not have permission to access this resource.
   schemas:
 
     # ── Enums ──────────────────────────────────────────────
@@ -1200,15 +1284,15 @@ components:
     AppEventModule:
       type: string
       enum:
-        - content
-        - geo
-        - referral
-        - self_assessment
-        - chatbot
-        - notification
-        - survey
-        - faq
-        - session
+      - content
+      - geo
+      - referral
+      - self_assessment
+      - chatbot
+      - notification
+      - survey
+      - faq
+      - session
 
     ContentType:
       type: string
@@ -1296,6 +1380,8 @@ components:
 
     # ── Geolocation (CMS) ──────────────────────────────────
 
+      description: Anonymous device profile. Returned only to the authenticated anonymous JWT whose `device_uuid` 
+        matches this profile.
     ContentThematic:
       type: object
       required: [thematic_id, name, disease, sort_order, is_active]
@@ -1333,17 +1419,17 @@ components:
     ContentListItem:
       type: object
       required:
-        - content_id
-        - thematic_id
-        - thematic_name
-        - title
-        - summary
-        - content_type
-        - language
-        - asset_url
-        - thumbnail_url
-        - duration_seconds
-        - published_at
+      - content_id
+      - thematic_id
+      - thematic_name
+      - title
+      - summary
+      - content_type
+      - language
+      - asset_url
+      - thumbnail_url
+      - duration_seconds
+      - published_at
       properties:
         content_id:
           type: integer
@@ -1378,19 +1464,19 @@ components:
     ContentDetail:
       type: object
       required:
-        - content_id
-        - thematic_id
-        - thematic_name
-        - title
-        - summary
-        - content_type
-        - language
-        - asset_url
-        - thumbnail_url
-        - duration_seconds
-        - source_name
-        - source_reference
-        - published_at
+      - content_id
+      - thematic_id
+      - thematic_name
+      - title
+      - summary
+      - content_type
+      - language
+      - asset_url
+      - thumbnail_url
+      - duration_seconds
+      - source_name
+      - source_reference
+      - published_at
       properties:
         content_id:
           type: integer
@@ -1573,6 +1659,8 @@ components:
         device_uuid:
           type: string
           format: uuid
+          description: Must match the JWT `device_uuid` claim. The server uses the JWT claim as the authoritative 
+            referral owner.
         center_id:
           type: integer
           description: References center_id from the CMS centers referential.
@@ -1650,14 +1738,14 @@ components:
         `expires_in` elapses or a protected write returns `401`. Refresh tokens are not part of the
         MVP contract.
       required:
-        - id
-        - device_uuid
-        - started_at
-        - platform
-        - app_version
-        - access_token
-        - token_type
-        - expires_in
+      - id
+      - device_uuid
+      - started_at
+      - platform
+      - app_version
+      - access_token
+      - token_type
+      - expires_in
       properties:
         id:
           type: string
@@ -1702,10 +1790,14 @@ components:
           type: string
           format: uuid
           nullable: true
+          description: Optional compatibility field. If provided, it must match the JWT `device_uuid` claim. The server 
+            stores the JWT claim value as authoritative.
         session_id:
           type: string
           format: uuid
           nullable: true
+          description: Optional compatibility field. If provided, it must match the JWT `session_id` claim. The server 
+            stores the JWT claim value as authoritative.
         event_name:
           type: string
           maxLength: 100
@@ -1731,11 +1823,11 @@ components:
           nullable: true
         language:
           allOf:
-            - $ref: '#/components/schemas/Language'
+          - $ref: '#/components/schemas/Language'
           nullable: true
         channel:
           allOf:
-            - $ref: '#/components/schemas/AppEventChannel'
+          - $ref: '#/components/schemas/AppEventChannel'
           nullable: true
         metadata:
           type: object
