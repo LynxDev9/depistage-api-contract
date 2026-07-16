@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, VALID, validate, requireFields, error } = require('../db');
+const { db, VALID, validate, requireFields, error, issueToken, requireBearer } = require('../db');
 
 const router = express.Router();
 
@@ -29,12 +29,16 @@ router.post('/', (req, res) => {
   };
 
   db.sessions.push(session);
+
+  // Issue the short-lived anonymous mobile JWT for protected write endpoints.
+  const token = issueToken(session);
   console.log(`[POST /sessions] Started session: ${session.id}`);
-  return res.status(201).json(session);
+  return res.status(201).json({ ...session, ...token });
 });
 
 // PATCH /sessions/:id — end session
-router.patch('/:id', (req, res) => {
+// Protected: MobileAnonymousBearer (contract v2.1.0)
+router.patch('/:id', requireBearer, (req, res) => {
   const session = db.sessions.find(s => s.id === req.params.id);
   if (!session) return error(res, 404, 'NOT_FOUND', 'No session found for this id.');
 
@@ -43,8 +47,11 @@ router.patch('/:id', (req, res) => {
   }
 
   session.duration_sec = req.body.duration_sec;
+
+  // Contract re-issues a fresh token on this response (SessionResponse requires it).
+  const token = issueToken(session);
   console.log(`[PATCH /sessions] Ended session: ${session.id} — ${session.duration_sec}s`);
-  return res.json(session);
+  return res.json({ ...session, ...token });
 });
 
 module.exports = router;

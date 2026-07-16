@@ -3,6 +3,8 @@
 const db = {
   users: [],
   sessions: [],
+  // access_token -> { device_uuid, session_id, expires_at (epoch ms) }
+  tokens: {},
   geo: {
     regions: [
       { region_id: 1, name: 'Rabat-Salé-Kénitra', region_code: 'MA-04', is_active: true },
@@ -128,6 +130,71 @@ function error(res, status, code, message) {
   return res.status(status).json({ error: code, message });
 }
 
+// ---------------------------------------------------------------------------
+// Anonymous mobile JWT (contract v2.1.0 — MobileAnonymousBearer)
+// ---------------------------------------------------------------------------
+
+const ACCESS_TOKEN_TTL_SEC = 900; // 15 min, matches contract `expires_in`
+
+function base64url(obj) {
+  return Buffer.from(JSON.stringify(obj))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+// Mints a fake-but-well-formed JWT for an anonymous device/session and records
+// it so protected endpoints can validate it. Not cryptographically signed —
+// this is a mock.
+function issueToken(session) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const payload = {
+    sub: session.device_uuid,
+    session_id: session.id,
+    role: 'anonymous',
+    iat: nowSec,
+    exp: nowSec + ACCESS_TOKEN_TTL_SEC,
+  };
+  const signature = base64url({ mock: true });
+  const access_token = `${base64url(header)}.${base64url(payload)}.${signature}`;
+
+  db.tokens[access_token] = {
+    device_uuid: session.device_uuid,
+    session_id: session.id,
+    expires_at: (nowSec + ACCESS_TOKEN_TTL_SEC) * 1000,
+  };
+
+  return {
+    access_token,
+    token_type: 'Bearer',
+    expires_in: ACCESS_TOKEN_TTL_SEC,
+  };
+}
+
+// Express middleware enforcing `Authorization: Bearer <access_token>`.
+// Emits the contract `Unauthorized` (401) response shape on any failure.
+function requireBearer(req, res, next) {
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  const unauthorized = () =>
+    error(res, 401, 'UNAUTHORIZED', 'Missing, invalid, or expired access token.');
+
+  if (!match) return unauthorized();
+
+  const token = match[1].trim();
+  const record = db.tokens[token];
+  if (!record) return unauthorized();
+  if (record.expires_at <= Date.now()) {
+    delete db.tokens[token];
+    return unauthorized();
+  }
+
+  req.auth = record; // { device_uuid, session_id, expires_at }
+  return next();
+}
+
 module.exports = {
   db,
   VALID,
@@ -136,4 +203,7 @@ module.exports = {
   requireFields,
   error,
   parseOptionalBoolean,
+  ACCESS_TOKEN_TTL_SEC,
+  issueToken,
+  requireBearer,
 };

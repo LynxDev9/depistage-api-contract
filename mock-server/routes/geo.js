@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, VALID, validate, requireFields, error, parseOptionalBoolean } = require('../db');
+const { db, VALID, validate, requireFields, error, parseOptionalBoolean, requireBearer } = require('../db');
 
 const router = express.Router();
 
@@ -107,15 +107,16 @@ router.get('/centers/:center_id', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // App table: CenterReferral (CRUD)
+// Protected: MobileAnonymousBearer (contract v2.1.0)
 // ---------------------------------------------------------------------------
 
-router.get('/referrals', (req, res) => {
+router.get('/referrals', requireBearer, (req, res) => {
   const deviceUuid = req.query.device_uuid;
   const out = deviceUuid ? db.geo.referrals.filter(r => r.device_uuid === deviceUuid) : db.geo.referrals;
   return res.json(out);
 });
 
-router.post('/referrals', (req, res) => {
+router.post('/referrals', requireBearer, (req, res) => {
   const body = req.body || {};
 
   const missing = requireFields(body, ['device_uuid', 'center_id', 'source']);
@@ -137,13 +138,13 @@ router.post('/referrals', (req, res) => {
   return res.status(201).json(referral);
 });
 
-router.get('/referrals/:id', (req, res) => {
+router.get('/referrals/:id', requireBearer, (req, res) => {
   const referral = db.geo.referrals.find(r => r.id === req.params.id);
   if (!referral) return error(res, 404, 'NOT_FOUND', 'Referral not found');
   return res.json(referral);
 });
 
-router.patch('/referrals/:id', (req, res) => {
+router.patch('/referrals/:id', requireBearer, (req, res) => {
   const referral = db.geo.referrals.find(r => r.id === req.params.id);
   if (!referral) return error(res, 404, 'NOT_FOUND', 'Referral not found');
 
@@ -158,7 +159,7 @@ router.patch('/referrals/:id', (req, res) => {
   return res.json(referral);
 });
 
-router.delete('/referrals/:id', (req, res) => {
+router.delete('/referrals/:id', requireBearer, (req, res) => {
   const idx = db.geo.referrals.findIndex(r => r.id === req.params.id);
   if (idx === -1) return error(res, 404, 'NOT_FOUND', 'Referral not found');
   db.geo.referrals.splice(idx, 1);
