@@ -37,8 +37,12 @@ router.post('/', (req, res) => {
 });
 
 // PATCH /sessions/:id — end session
-// Protected: MobileAnonymousBearer (contract v2.1.0)
+// Protected: MobileAnonymousBearer (contract v2.3.0) — path id must match JWT session_id claim.
 router.patch('/:id', requireBearer, (req, res) => {
+  if (req.auth.session_id !== req.params.id) {
+    return error(res, 403, 'FORBIDDEN', 'The access token does not have permission to access this resource.');
+  }
+
   const session = db.sessions.find(s => s.id === req.params.id);
   if (!session) return error(res, 404, 'NOT_FOUND', 'No session found for this id.');
 

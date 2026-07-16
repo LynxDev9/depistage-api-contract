@@ -1,7 +1,7 @@
 // routes/users.js
 
 const express = require('express');
-const { db, VALID, validate, validateArray, requireFields, error } = require('../db');
+const { db, VALID, validate, validateArray, requireFields, error, requireBearer } = require('../db');
 
 const router = express.Router();
 
@@ -48,14 +48,24 @@ router.post('/', (req, res) => {
 });
 
 // GET /users/:device_uuid
-router.get('/:device_uuid', (req, res) => {
+// Protected: MobileAnonymousBearer (contract v2.3.0) — path device_uuid must match JWT claim.
+router.get('/:device_uuid', requireBearer, (req, res) => {
+  if (req.auth.device_uuid !== req.params.device_uuid) {
+    return error(res, 403, 'FORBIDDEN', 'The access token does not have permission to access this resource.');
+  }
+
   const user = db.users.find(u => u.device_uuid === req.params.device_uuid);
   if (!user) return error(res, 404, 'NOT_FOUND', 'No user found for this device_uuid.');
   return res.json(user);
 });
 
 // PATCH /users/:device_uuid
-router.patch('/:device_uuid', (req, res) => {
+// Protected: MobileAnonymousBearer (contract v2.3.0) — path device_uuid must match JWT claim.
+router.patch('/:device_uuid', requireBearer, (req, res) => {
+  if (req.auth.device_uuid !== req.params.device_uuid) {
+    return error(res, 403, 'FORBIDDEN', 'The access token does not have permission to access this resource.');
+  }
+
   const user = db.users.find(u => u.device_uuid === req.params.device_uuid);
   if (!user) return error(res, 404, 'NOT_FOUND', 'No user found for this device_uuid.');
 
