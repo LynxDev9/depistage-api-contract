@@ -160,6 +160,13 @@ function issueToken(session) {
   const signature = base64url({ mock: true });
   const access_token = `${base64url(header)}.${base64url(payload)}.${signature}`;
 
+  // Purge any previous token for the SAME session before inserting the new one,
+  // so db.tokens holds at most one live token per session. Without this, every
+  // heartbeat PATCH /sessions/{id} leaks a fresh (still-valid) token row.
+  for (const [tok, rec] of Object.entries(db.tokens)) {
+    if (rec.session_id === session.id) delete db.tokens[tok];
+  }
+
   db.tokens[access_token] = {
     device_uuid: session.device_uuid,
     session_id: session.id,
