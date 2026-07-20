@@ -2,6 +2,14 @@ openapi: 3.0.3
 info:
   title: App API
   description: |
+    **v2.4.0 - Session heartbeat lease clarification**
+
+    A genuine foreground period starts an independent session lease with `POST /sessions`.
+    A public same-device start does not replace, revoke, or otherwise mutate a healthy lease.
+    While that foreground lease remains usable, `PATCH /sessions/{id}` sends recurring total-duration
+    checkpoints and returns replacement bearer credentials that the mobile client adopts atomically.
+    No refresh token or mandatory end-session endpoint is introduced.
+
     **v2.3.0 — Mobile JWT ownership hardening (Phase 13 hotfix)**
 
     Security hardening for anonymous mobile bearer JWTs:
@@ -48,7 +56,7 @@ info:
     **Identifiers**
     - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
     - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
-  version: 2.3.0
+  version: 2.4.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -67,8 +75,9 @@ tags:
   description: Anonymous device profile management (device-based, no login)
 - name: Sessions
   description: |
-    App session tracking and anonymous mobile JWT issuance.
-    `POST /sessions` returns a short-lived bearer token for protected write endpoints.
+    Foreground session-lease tracking and anonymous mobile JWT issuance.
+    `POST /sessions` starts an independent foreground lease and returns a short-lived bearer token.
+    Successful `PATCH /sessions/{id}` heartbeats return replacement credentials for the same lease.
 - name: Geolocation (CMS)
   description: |
     Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -76,7 +85,7 @@ tags:
 - name: Geolocation (App)
   description: User interactions with centers (App schema)
 - name: Analytics
-  description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard 
+  description: Mobile usage analytics ingestion. Events are stored in the app schema and used later by dashboard
     queries.
 - name: Content
   description: |
@@ -259,14 +268,20 @@ paths:
   /sessions:
     post:
       tags: [Sessions]
-      summary: Start a new app session
+      summary: Start a foreground session lease
       description: |
-        Called each time the app is opened (foreground). Returns a session id to use when closing
-        the session and a short-lived anonymous JWT (`access_token`) for protected mobile writes.
+        Called once for each genuine foreground usage period. Starts an independent session lease
+        with duration zero and returns its session id plus a short-lived anonymous JWT
+        (`access_token`) for protected mobile writes.
 
-        Does not require `Authorization`. The mobile app should store `access_token` and send
-        `Authorization: Bearer <access_token>` on subsequent write calls until `expires_in` elapses,
-        then start a new session to obtain a fresh token.
+        Does not require `Authorization`. A public start for the same `device_uuid` does not replace,
+        revoke, close, or mutate any healthy existing lease. Multiple healthy same-device leases may
+        coexist and remain independently usable.
+
+        Keep the returned session id and credentials in memory. Send the bearer token on protected
+        writes and atomically accept replacement credentials returned by each successful heartbeat.
+        If this request returns `404`, register the device profile with `POST /users`, then retry
+        session creation once.
       requestBody:
         required: true
         content:
@@ -288,14 +303,14 @@ paths:
                 id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
                 started_at: "2026-06-04T12:00:00Z"
-                duration_sec:
+                duration_sec: 0
                 platform: "android"
                 app_version: "1.0.0"
                 access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 token_type: "Bearer"
                 expires_in: 900
         '404':
-          description: device_uuid not registered
+          description: device_uuid not registered; register it with POST /users before one session retry
           content:
             application/json:
               schema:
@@ -320,12 +335,18 @@ paths:
   /sessions/{id}:
     patch:
       tags: [Sessions]
-      summary: End a session
+      summary: Update session heartbeat
       description: |
-        Called when the app goes to background or is closed. Sends the session duration.
-        Requires a valid anonymous bearer token for the same `device_uuid` / session.
+        Sends a recurring heartbeat checkpoint, normally about every 30 seconds while the same
+        foreground lease remains active. `duration_sec` is the monotonic total foreground duration
+        for this session, not an increment.
 
-        The path `id` must match the JWT `session_id` claim. A valid token for a different session returns `403 FORBIDDEN`.
+        Requires a valid anonymous bearer token bound to the same `device_uuid` and session id.
+        The path `id` must match the JWT `session_id` claim; a valid token for a different session
+        returns `403 FORBIDDEN`. Every successful heartbeat returns a replacement JWT with a new
+        `jti`; the client must atomically adopt the returned credentials and derived expiration while
+        retaining the same session id. Heartbeats never extend the session's absolute lifetime, and
+        no refresh token is issued.
       security:
       - MobileAnonymousBearer: []
       parameters:
@@ -346,7 +367,7 @@ paths:
               duration_sec: 142
       responses:
         '200':
-          description: Session updated
+          description: Heartbeat accepted and replacement credentials issued
           content:
             application/json:
               schema:
@@ -363,6 +384,8 @@ paths:
                 expires_in: 900
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: Session not found
           content:
@@ -372,15 +395,30 @@ paths:
               example:
                 error: "NOT_FOUND"
                 message: "No session found for this id."
+        '409':
+          description: The session exists but is permanently inactive and cannot accept heartbeats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "SESSION_INACTIVE"
+                message: "This session is no longer active."
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          description: Invalid heartbeat duration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "Invalid value for field 'duration_sec'."
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
   # ── Geolocation (CMS, read-only) ───────────────────────────────────────────
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /geo/regions:
     get:
       tags: [Geolocation (CMS)]
@@ -690,7 +728,7 @@ paths:
         schema:
           type: string
           format: uuid
-        description: Optional compatibility filter. If provided, it must match the JWT `device_uuid` claim. The API 
+        description: Optional compatibility filter. If provided, it must match the JWT `device_uuid` claim. The API
           always scopes results to the authenticated device.
       - name: center_id
         in: query
@@ -1181,9 +1219,10 @@ components:
       description: |
         Short-lived anonymous mobile JWT issued by the session flow.
         It represents an anonymous device/session, not a personal user account.
-        Send as `Authorization: Bearer <access_token>`. Default lifetime is 900 seconds
-        (15 minutes) per `expires_in` in `SessionResponse`. Renew by calling `POST /sessions`
-        again when the token expires. Refresh tokens are not part of the MVP contract.
+        Send as `Authorization: Bearer <access_token>`. The nominal lifetime is 900 seconds
+        (15 minutes), but `expires_in` can be shorter near the session's absolute expiry.
+        Every successful heartbeat returns replacement credentials for the same session; atomically
+        adopt them and their derived expiration. Refresh tokens are not part of the MVP contract.
 
   parameters:
     DeviceUUID:
@@ -1380,7 +1419,7 @@ components:
 
     # ── Geolocation (CMS) ──────────────────────────────────
 
-      description: Anonymous device profile. Returned only to the authenticated anonymous JWT whose `device_uuid` 
+      description: Anonymous device profile. Returned only to the authenticated anonymous JWT whose `device_uuid`
         matches this profile.
     ContentThematic:
       type: object
@@ -1659,7 +1698,7 @@ components:
         device_uuid:
           type: string
           format: uuid
-          description: Must match the JWT `device_uuid` claim. The server uses the JWT claim as the authoritative 
+          description: Must match the JWT `device_uuid` claim. The server uses the JWT claim as the authoritative
             referral owner.
         center_id:
           type: integer
@@ -1723,20 +1762,24 @@ components:
 
     EndSessionRequest:
       type: object
+      description: Legacy component name; request is a heartbeat.
       required: [duration_sec]
       properties:
         duration_sec:
           type: integer
           minimum: 0
+          description: |
+            Monotonic total foreground seconds observed for this session. Creation responses use
+            zero; delayed or duplicate heartbeat requests must not reduce the stored total.
 
     SessionResponse:
       type: object
       description: |
         Session record with anonymous mobile JWT credentials.
         The access token represents an anonymous device/session, not a personal user account.
-        It is short-lived; the mobile app should renew it by calling `POST /sessions` again when
-        `expires_in` elapses or a protected write returns `401`. Refresh tokens are not part of the
-        MVP contract.
+        Each successful heartbeat returns replacement credentials for this same session. The mobile
+        app must atomically adopt the returned access token and its derived expiration without
+        changing the session id. Refresh tokens are not part of the MVP contract.
       required:
       - id
       - device_uuid
@@ -1760,13 +1803,18 @@ components:
         duration_sec:
           type: integer
           nullable: true
+          description: |
+            Monotonic total foreground seconds for this session. A creation response returns zero;
+            accepted heartbeat checkpoints never reduce the value.
         platform:
           $ref: '#/components/schemas/Platform'
         app_version:
           type: string
         access_token:
           type: string
-          description: Short-lived anonymous mobile JWT access token issued for the anonymous device/session.
+          description: |
+            Short-lived anonymous mobile JWT for this device/session. A successful heartbeat returns
+            a replacement token with a new `jti`; clients atomically replace the previous token.
         token_type:
           type: string
           enum: [Bearer]
@@ -1776,7 +1824,9 @@ components:
           format: int32
           example: 900
           minimum: 1
-          description: Access token lifetime in seconds.
+          description: |
+            Access token lifetime in seconds. Nominally up to 900, but it can be shorter when the
+            session is near its fixed absolute expiry.
 
     # ── Error ──────────────────────────────────────────────
 
@@ -1790,13 +1840,13 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Optional compatibility field. If provided, it must match the JWT `device_uuid` claim. The server 
+          description: Optional compatibility field. If provided, it must match the JWT `device_uuid` claim. The server
             stores the JWT claim value as authoritative.
         session_id:
           type: string
           format: uuid
           nullable: true
-          description: Optional compatibility field. If provided, it must match the JWT `session_id` claim. The server 
+          description: Optional compatibility field. If provided, it must match the JWT `session_id` claim. The server
             stores the JWT claim value as authoritative.
         event_name:
           type: string
