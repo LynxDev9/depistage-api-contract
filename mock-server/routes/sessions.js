@@ -56,7 +56,9 @@ router.post('/', (req, res) => {
   return res.status(201).json(sessionResponse(session, token));
 });
 
-// PATCH /sessions/:id — end session
+// PATCH /sessions/:id — recurring heartbeat (NOT an end-of-session call).
+// Sent about every 30s while the foreground lease is active; carries the total
+// duration so far and returns replacement credentials for the same session.
 // Protected: MobileAnonymousBearer (contract v2.3.0) — path id must match JWT session_id claim.
 router.patch('/:id', requireBearer, (req, res) => {
   if (req.auth.session_id !== req.params.id) {
@@ -89,7 +91,7 @@ router.patch('/:id', requireBearer, (req, res) => {
   // Contract re-issues a fresh token on this response (SessionResponse requires it).
   const token = issueToken(session);
   const staleNote = isStale ? ` (ignored stale ${duration}s)` : '';
-  console.log(`[PATCH /sessions] Ended session: ${session.id} — ${session.duration_sec}s${staleNote}`);
+  console.log(`[PATCH /sessions] Heartbeat: ${session.id} — ${session.duration_sec}s${staleNote}`);
   return res.json(sessionResponse(session, token));
 });
 

@@ -1,4 +1,4 @@
-// mock-server/server.js — MSPS Dépistage API v2.0.0 (English snake_case)
+// mock-server/server.js — MSPS Dépistage API v2.4.0 (English snake_case)
 
 const express = require('express');
 const { db } = require('./db');
@@ -13,7 +13,10 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v2.0.0)
+// Routes (see api-contract.yaml v2.4.0)
+//
+// Not implemented here: /events, /content/*, /partner-links. The app does not
+// consume them yet; add the routers when that work starts.
 // ---------------------------------------------------------------------------
 
 app.use('/users', usersRouter);
