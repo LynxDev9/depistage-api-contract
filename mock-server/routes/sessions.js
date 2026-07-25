@@ -72,15 +72,24 @@ router.patch('/:id', requireBearer, (req, res) => {
     return error(res, 409, 'SESSION_INACTIVE', 'This session is no longer active.');
   }
 
-  if (req.body.duration_sec === undefined) {
+  const duration = req.body.duration_sec;
+  if (duration === undefined) {
     return error(res, 422, 'VALIDATION_ERROR', "Missing required field: 'duration_sec'");
   }
+  if (!Number.isInteger(duration) || duration < 0) {
+    return error(res, 422, 'VALIDATION_ERROR', "Invalid value for field 'duration_sec'.");
+  }
 
-  session.duration_sec = req.body.duration_sec;
+  // Monotonic total: a delayed or duplicate heartbeat carries a stale (lower)
+  // total. The contract requires such a request not to reduce the stored value,
+  // so clamp instead of rejecting — network reordering is not a client error.
+  const isStale = duration < session.duration_sec;
+  session.duration_sec = Math.max(session.duration_sec, duration);
 
   // Contract re-issues a fresh token on this response (SessionResponse requires it).
   const token = issueToken(session);
-  console.log(`[PATCH /sessions] Ended session: ${session.id} — ${session.duration_sec}s`);
+  const staleNote = isStale ? ` (ignored stale ${duration}s)` : '';
+  console.log(`[PATCH /sessions] Ended session: ${session.id} — ${session.duration_sec}s${staleNote}`);
   return res.json(sessionResponse(session, token));
 });
 
