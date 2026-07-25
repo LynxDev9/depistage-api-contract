@@ -23,7 +23,9 @@ router.post('/', (req, res) => {
     id:           uuidv4(),
     device_uuid:  body.device_uuid,
     started_at:   new Date().toISOString(),
-    duration_sec: null,
+    // Contract v2.4.0: a creation response returns zero, never null. The client
+    // must not treat `null` as the "brand new session" marker.
+    duration_sec: 0,
     platform:     body.platform,
     app_version:  body.app_version,
   };
