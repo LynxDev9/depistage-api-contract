@@ -2,6 +2,13 @@ openapi: 3.0.3
 info:
   title: App API
   description: |
+    **v2.4.1 - Final mobile JWT session rotation contract**
+
+    Aligns the contract with persisted current/previous JTI authorization, current-token-only
+    heartbeat rotation, the 30-second ordinary-endpoint grace period, and the fixed absolute
+    session lifetime. This documentation-only alignment does not add refresh tokens or change
+    endpoint classifications.
+
     **v2.4.0 - Session heartbeat lease clarification**
 
     A genuine foreground period starts an independent session lease with `POST /sessions`.
@@ -33,8 +40,8 @@ info:
     **v2.1.0 — Anonymous mobile bearer JWT (Phase 13)**
 
     Protected mobile **write** endpoints require `Authorization: Bearer <access_token>`.
-    The token is a short-lived anonymous JWT returned by `POST /sessions` (and may be re-issued on
-    `PATCH /sessions/{id}`). It represents an anonymous device/session only — no personal mobile
+    The token is a short-lived anonymous JWT returned by `POST /sessions` and replaced after every
+    successful `PATCH /sessions/{id}`. It represents an anonymous device/session only — no personal mobile
     accounts, no refresh tokens in the MVP.
 
     Device registration (`POST /users`) and session start (`POST /sessions`) remain callable without
@@ -56,7 +63,26 @@ info:
     **Identifiers**
     - `region_id`, `province_id`, `commune_id`, `category_id`, `center_id` are database identity values.
     - `region_code`, `province_code`, `commune_code`, `geo_code` are optional import/source codes (admin).
-  version: 2.4.0
+
+    **Persisted mobile token-state policy**
+    - Ordinary protected mobile endpoints accept the current persisted `jti`, or only the
+      immediately previous persisted `jti` through its inclusive grace deadline.
+    - The default previous-token grace is 30 seconds. It never applies to heartbeat rotation.
+      A zero-second configuration disables previous-token authorization completely.
+    - Older tokens, previous tokens after grace, missing session rows, device mismatches, missing
+      current JTI state, and closed, heartbeat-stale, or absolutely expired sessions receive the
+      same public `401 UNAUTHORIZED` persisted-state response.
+    - The app uses only the latest replacement token. Grace exists for in-flight ordinary requests;
+      it is not a client token-retention strategy.
+    - Missing, malformed, signature-invalid, and cryptographically expired JWTs continue to use
+      the existing authentication challenge.
+
+    **Public endpoints**
+    Public endpoint classification is unchanged. Representative public routes include
+    `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
+    They do not validate persisted JTI state and remain public when an obsolete, superseded, or
+    otherwise invalid persisted-session bearer token is attached.
+  version: 2.4.1
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -195,7 +221,7 @@ paths:
                 message: "No user found for this device_uuid."
 
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
@@ -260,7 +286,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
       security:
@@ -277,6 +303,10 @@ paths:
         Does not require `Authorization`. A public start for the same `device_uuid` does not replace,
         revoke, close, or mutate any healthy existing lease. Multiple healthy same-device leases may
         coexist and remain independently usable.
+
+        The server initializes the new row's persisted current JTI before returning the short-lived
+        bearer JWT. JTI state is internal and is not exposed as a response field. No refresh token is
+        returned.
 
         Keep the returned session id and credentials in memory. Send the bearer token on protected
         writes and atomically accept replacement credentials returned by each successful heartbeat.
@@ -343,10 +373,17 @@ paths:
 
         Requires a valid anonymous bearer token bound to the same `device_uuid` and session id.
         The path `id` must match the JWT `session_id` claim; a valid token for a different session
-        returns `403 FORBIDDEN`. Every successful heartbeat returns a replacement JWT with a new
-        `jti`; the client must atomically adopt the returned credentials and derived expiration while
-        retaining the same session id. Heartbeats never extend the session's absolute lifetime, and
-        no refresh token is issued.
+        returns `403 FORBIDDEN`.
+
+        Under the session-row transaction lock, heartbeat accepts only the currently persisted JTI.
+        Every successful heartbeat returns a replacement JWT with a new `jti`, moves the presented
+        JTI to the immediately previous slot, and atomically supersedes it. The client must atomically
+        adopt the returned credentials and derived expiration while retaining the same session id.
+        The immediately previous token cannot perform another heartbeat, even during ordinary-endpoint
+        grace. A repeated heartbeat with that superseded token returns `401 UNAUTHORIZED` with
+        `"The access token has been superseded."`
+
+        Heartbeats never extend the session's fixed absolute lifetime, and no refresh token is issued.
       security:
       - MobileAnonymousBearer: []
       parameters:
@@ -383,7 +420,7 @@ paths:
                 token_type: "Bearer"
                 expires_in: 900
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/HeartbeatUnauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -753,7 +790,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/CenterReferral'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -795,7 +832,7 @@ paths:
                 source: "map"
                 followed_up: false
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
@@ -835,7 +872,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CenterReferral'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
           description: Referral not found
           content:
@@ -880,7 +917,7 @@ paths:
                 source: "chatbot"
                 followed_up: true
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
           description: Referral not found
           content:
@@ -913,7 +950,7 @@ paths:
         '204':
           description: Referral deleted
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
           description: Referral not found
           content:
@@ -975,7 +1012,7 @@ paths:
               example:
                 accepted: true
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
@@ -1222,7 +1259,12 @@ components:
         Send as `Authorization: Bearer <access_token>`. The nominal lifetime is 900 seconds
         (15 minutes), but `expires_in` can be shorter near the session's absolute expiry.
         Every successful heartbeat returns replacement credentials for the same session; atomically
-        adopt them and their derived expiration. Refresh tokens are not part of the MVP contract.
+        adopt them and their derived expiration. Keep and use only the latest token.
+
+        Ordinary protected mobile endpoints validate persisted session state. They accept the current
+        JTI and, for in-flight requests only, the immediately previous JTI through the inclusive
+        grace deadline (30 seconds by default). Heartbeat accepts only the current JTI. Configuring
+        zero grace disables previous-token authorization. Refresh tokens are not part of the contract.
 
   parameters:
     DeviceUUID:
@@ -1237,7 +1279,7 @@ components:
   responses:
 
     Unauthorized:
-      description: Missing, invalid, or expired anonymous mobile access token.
+      description: Missing, malformed, signature-invalid, or cryptographically expired anonymous mobile access token.
       content:
         application/json:
           schema:
@@ -1245,6 +1287,37 @@ components:
           example:
             error: "UNAUTHORIZED"
             message: "Missing, invalid, or expired access token."
+
+    ProtectedMobileUnauthorized:
+      description: |
+        Authentication challenge or persisted mobile token/session state rejection.
+        Missing, malformed, signature-invalid, or cryptographically expired JWTs use the existing
+        authentication challenge. A cryptographically valid JWT receives the stable response below
+        when its persisted state is invalid: it is older than the immediately previous token; its
+        previous-token grace has expired; its session row is missing; its device does not match; its
+        current JTI is missing; or its session is closed, heartbeat-stale, or absolutely expired.
+        Internal persisted-state reasons are not exposed separately.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "UNAUTHORIZED"
+            message: "The access token is no longer valid for this session."
+
+    HeartbeatUnauthorized:
+      description: |
+        Authentication challenge or heartbeat token superseded.
+        Heartbeat requires the currently persisted JTI. The immediately previous token is never
+        accepted for heartbeat, including during ordinary-endpoint grace. Retrying heartbeat with
+        a superseded token returns the stable response below.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "UNAUTHORIZED"
+            message: "The access token has been superseded."
 
     TooManyRequests:
       description: Too many requests from the same client, device, IP, or authenticated user.
@@ -1784,6 +1857,7 @@ components:
       - id
       - device_uuid
       - started_at
+      - duration_sec
       - platform
       - app_version
       - access_token
@@ -1802,10 +1876,11 @@ components:
           format: date-time
         duration_sec:
           type: integer
-          nullable: true
+          minimum: 0
           description: |
-            Monotonic total foreground seconds for this session. A creation response returns zero;
-            accepted heartbeat checkpoints never reduce the value.
+            Monotonic total foreground seconds for this session.
+            Session creation returns zero.
+            Accepted heartbeat checkpoints never reduce the stored value.
         platform:
           $ref: '#/components/schemas/Platform'
         app_version:
