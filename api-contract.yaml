@@ -2,6 +2,15 @@ openapi: 3.0.3
 info:
   title: App API
   description: |
+
+    **v2.5.0 - Final Content contract alignment**
+
+    Finalizes the mobile Content contract: highlighted-content fields/filter/order,
+    Markdown text detail, HLS-only normal VIDEO delivery, the canonical `content_viewed`
+    AppEvent convention, an explicit thematic disease enum, and authenticated anonymous-device
+    content rating through `PUT /content/{content_id}/rating`. Content administration remains an
+    AdminWeb concern, targeting stays internal, and no ContentView API is introduced.
+
     **v2.4.1 - Final mobile JWT session rotation contract**
 
     Aligns the contract with persisted current/previous JTI authorization, current-token-only
@@ -82,10 +91,9 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 2.4.1
+  version: 2.5.0
 
 servers:
-  # Added by API Auto Mocking Plugin
   # Added by API Auto Mocking Plugin
 - description: SwaggerHub API Auto Mocking
   url: https://virtserver.swaggerhub.com/lynxdev99organizatio/DepistageMSPS/1.0.0
@@ -115,8 +123,9 @@ tags:
     queries.
 - name: Content
   description: |
-    Published educational content reads (`cms.ContentItem`, `cms.ContentAsset`, `cms.Thematic`).
-    Public read-only endpoints for the mobile app. Only `PUBLISHED` content is visible.
+    Published educational content for the mobile application and authenticated anonymous-device
+    content rating. Read endpoints are public and expose only mobile-visible published content.
+    Rating requires `MobileAnonymousBearer`. Content administration remains internal to AdminWeb.
 - name: Partner links
   description: |
     Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
@@ -974,12 +983,26 @@ paths:
         self-assessment events, chatbot events, notification opens, surveys, FAQ usage,
         and referral-related analytics.
 
+        Canonical Content consultation convention:
+        - Use `event_name: content_viewed` and `module: content`; there is no ContentView endpoint.
+        - Send the consulted integer `content_id`, its `language`, and channel mapping
+          `TEXT -> text`, `INFOGRAPHIC -> infographic`, `AUDIO -> audio`, `VIDEO -> video`.
+        - Emit at most one `content_viewed` event per consultation when the consultation ends.
+          Do not emit `content_viewed` periodically as a heartbeat.
+        - Put elapsed consultation seconds in `metadata.duration_sec` as a non-negative integer.
+        - Include the client-observed boolean `metadata.completed` only when the client can
+          meaningfully determine completion. It is especially useful for VIDEO and AUDIO; TEXT
+          and INFOGRAPHIC may omit it when no deterministic completion rule exists.
+
         Optional `metadata` must not contain personal data, names, phone numbers, exact GPS
         coordinates, free-text health declarations, or full chatbot transcripts.
 
         Requires anonymous mobile bearer token from `POST /sessions`.
 
-        The server derives the authoritative `device_uuid` and `session_id` from the JWT claims. Request body `device_uuid` and `session_id` are optional for compatibility; if provided, each value must match the JWT claim or the API returns `403 FORBIDDEN`.
+        The server derives the authoritative `device_uuid` and `session_id` from the JWT claims.
+        Request body `device_uuid` and `session_id` are optional for compatibility; if provided,
+        each value must match the JWT claim or the API returns `403 FORBIDDEN`. Normal mobile
+        content events should omit both fields.
       security:
       - MobileAnonymousBearer: []
       requestBody:
@@ -989,19 +1012,14 @@ paths:
             schema:
               $ref: '#/components/schemas/RecordAppEventRequest'
             example:
-              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-              session_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
               event_name: "content_viewed"
               module: "content"
-              content_id: 10
-              center_id:
-              region_id: 1
-              province_id: 10
+              content_id: 44
               language: "fr"
-              channel: "text"
+              channel: "video"
               metadata:
-                section: "prevention"
-                duration_sec: 45
+                duration_sec: 143
+                completed: false
       responses:
         '202':
           description: Event accepted
@@ -1026,7 +1044,6 @@ paths:
                 message: "Invalid value for field 'channel'."
         '429':
           $ref: '#/components/responses/TooManyRequests'
-
         '403':
           $ref: '#/components/responses/Forbidden'
   /content/thematics:
@@ -1067,25 +1084,25 @@ paths:
         Visibility rules:
         - Only `PUBLISHED` content is returned.
         - `DRAFT`, `READY_FOR_REVIEW`, and `ARCHIVED` content is hidden.
-        - `TEXT` content may be returned without an asset.
-        - `VIDEO`, `AUDIO`, and `INFOGRAPHIC` content must have at least one `READY` asset with a non-empty public delivery URL.
-        - Internal fields must not be exposed.
+        - `TEXT` content may be returned without a media asset.
+        - `VIDEO`, `AUDIO`, and `INFOGRAPHIC` content is returned only when it has a usable public delivery URL.
+        - Internal storage and processing fields are never exposed.
 
-        Public delivery asset selection:
+        Public delivery selection:
         - `TEXT` content does not require `asset_url`.
-        - `INFOGRAPHIC` content uses a READY public infographic delivery asset.
-        - `VIDEO` content uses a READY public mobile video asset or HLS playlist.
-        - `AUDIO` content uses a READY public audio delivery asset.
-        - Thumbnail assets are returned only through `thumbnail_url`.
-        - Original/source files, text sources, documents, and HLS segments must never be returned as `asset_url` in Phase 19.
+        - `INFOGRAPHIC` content uses its usable public infographic URL.
+        - `VIDEO` content is visible only when a usable public HLS playlist exists; its playlist URL is returned as `asset_url`.
+        - `AUDIO` content uses its usable public audio URL.
+        - `thumbnail_url` is used only for the public thumbnail when one is available.
+        - Internal source and processing assets are not exposed.
 
-        Sorting is deterministic:
-        - `display_order` ascending.
+        Default sorting is deterministic:
+        - `is_highlighted` descending (`true` first).
         - `published_at` descending.
         - `content_id` ascending.
 
-        Because this endpoint documents `429`, the Phase 19 implementation must include
-        a `ContentReads` rate-limit policy.
+        Because this endpoint documents `429`, the implementation must include
+        the established `ContentReads` rate-limit policy.
       parameters:
       - name: language
         in: query
@@ -1105,6 +1122,15 @@ paths:
         schema:
           $ref: '#/components/schemas/ContentType'
         description: Filter by content type.
+      - name: is_highlighted
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: |
+          Optional exact highlight filter. `true` returns only highlighted content; `false`
+          returns only non-highlighted content. When omitted, no highlight filter is applied.
+          The default highlight-first ordering still applies to the resulting set.
       - name: page
         in: query
         required: false
@@ -1131,17 +1157,18 @@ paths:
                 $ref: '#/components/schemas/ContentPage'
               example:
                 items:
-                - content_id: 12
-                  thematic_id: 1
-                  thematic_name: "VIH"
-                  title: "Comprendre le dépistage du VIH"
-                  summary: "Résumé court..."
+                - content_id: 44
+                  thematic_id: 2
+                  thematic_name: "Hepatites"
+                  title: "Prévenir les hépatites virales"
+                  summary: "Gestes de prévention et situations où demander conseil."
                   content_type: "VIDEO"
                   language: "fr"
-                  asset_url: "https://cdn.example.msps.test/video.mp4"
-                  thumbnail_url:
-                  duration_seconds: 180
-                  published_at: "2026-07-03T12:00:00Z"
+                  is_highlighted: true
+                  asset_url: "https://media.example.msps.test/content/44/hls/asset-81-attempt-1/master.m3u8"
+                  thumbnail_url: "https://media.example.msps.test/content/44/thumbnail/poster.jpg"
+                  duration_seconds: 143
+                  published_at: "2026-08-09T11:00:00Z"
                 page: 1
                 page_size: 20
                 total_count: 1
@@ -1156,7 +1183,6 @@ paths:
                 message: "Invalid pagination value."
         '429':
           $ref: '#/components/responses/TooManyRequests'
-
   /content/{content_id}:
     get:
       tags: [Content]
@@ -1169,26 +1195,32 @@ paths:
         Visibility rules:
         - Return `404` when content does not exist.
         - Return `404` when content exists but is not `PUBLISHED`.
-        - Return `404` when media content exists but has no `READY` public delivery asset.
+        - Return `404` when media content exists but has no usable public delivery URL.
         - Do not reveal whether unpublished or internal content exists.
 
-        Public delivery asset selection:
+        Public delivery selection:
         - `TEXT` content does not require `asset_url`.
-        - `INFOGRAPHIC` content uses a READY public infographic delivery asset.
-        - `VIDEO` content uses a READY public mobile video asset or HLS playlist.
-        - `AUDIO` content uses a READY public audio delivery asset.
-        - Thumbnail assets are returned only through `thumbnail_url`.
-        - Original/source files, text sources, documents, and HLS segments must never be returned as `asset_url` in Phase 19.
+        - `INFOGRAPHIC` content uses its usable public infographic URL.
+        - `VIDEO` content is visible only when a usable public HLS playlist exists; its playlist URL is returned as `asset_url`.
+        - `AUDIO` content uses its usable public audio URL.
+        - `thumbnail_url` is used only for the public thumbnail when one is available.
+        - Internal source and processing assets are not exposed.
 
-        Because this endpoint documents `429`, the Phase 19 implementation must include
-        a `ContentReads` rate-limit policy.
+        Text representation:
+        - Published `TEXT` detail has one non-empty `body_markdown` string.
+        - Non-text detail returns `body_markdown: null`.
+        - `TEXT` does not require a media asset; source documents remain internal.
+
+        Because this endpoint documents `429`, the implementation must include
+        the established `ContentReads` rate-limit policy.
       parameters:
       - name: content_id
         in: path
         required: true
         schema:
           type: integer
-        example: 12
+          minimum: 1
+        example: 44
       responses:
         '200':
           description: Published content detail
@@ -1197,19 +1229,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ContentDetail'
               example:
-                content_id: 12
-                thematic_id: 1
-                thematic_name: "VIH"
-                title: "Comprendre le dépistage du VIH"
-                summary: "Résumé court..."
+                content_id: 44
+                thematic_id: 2
+                thematic_name: "Hepatites"
+                title: "Prévenir les hépatites virales"
+                summary: "Gestes de prévention et situations où demander conseil."
                 content_type: "VIDEO"
                 language: "fr"
-                asset_url: "https://cdn.example.msps.test/video.mp4"
-                thumbnail_url:
-                duration_seconds: 180
+                is_highlighted: true
+                body_markdown:
+                asset_url: "https://media.example.msps.test/content/44/hls/asset-81-attempt-1/master.m3u8"
+                thumbnail_url: "https://media.example.msps.test/content/44/thumbnail/poster.jpg"
+                duration_seconds: 143
                 source_name: "MSPS"
-                source_reference: "Référence officielle"
-                published_at: "2026-07-03T12:00:00Z"
+                source_reference: "Support officiel de sensibilisation aux hépatites"
+                published_at: "2026-08-09T11:00:00Z"
         '404':
           description: Content not found
           content:
@@ -1222,6 +1256,73 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /content/{content_id}/rating:
+    put:
+      tags: [Content]
+      summary: Set the current device rating for content
+      description: |
+        Sets the authenticated anonymous device's current rating for one mobile-visible content item.
+        The server derives the authenticated device identity from the anonymous JWT. Device identity
+        is not accepted from the request body.
+
+        There is one current rating for each authenticated device and content item. A later PUT
+        replaces the current rating. The operation does not maintain rating history and does not
+        create reviews, likes, reactions, or moderation data.
+
+        Missing, unpublished, archived, draft, review-state, or otherwise non-mobile-visible content
+        returns the same `404 NOT_FOUND` response so the operation does not reveal internal content.
+      security:
+      - MobileAnonymousBearer: []
+      parameters:
+      - name: content_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        example: 44
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetContentRatingRequest'
+            example:
+              rating: 4
+      responses:
+        '200':
+          description: Current rating set for the authenticated anonymous device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentRatingResponse'
+              example:
+                content_id: 44
+                rating: 4
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Content not found or not mobile-visible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Content not found."
+        '422':
+          description: Rating validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "rating must be between 1 and 5."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /partner-links:
     get:
       tags: [Partner links]
@@ -1391,7 +1492,7 @@ components:
 
     AppEventChannel:
       type: string
-      enum: [text, audio, video, chatbot, notification]
+      enum: [text, infographic, audio, video, chatbot, notification]
 
     AppEventModule:
       type: string
@@ -1504,11 +1605,12 @@ components:
           type: string
         disease:
           type: string
+          enum: [HIV, HEPATITIS, SYPHILIS, ALL]
+          description: Stable thematic disease code. `ALL` is the code for the General thematic; do not use `GENERAL`.
         sort_order:
           type: integer
         is_active:
           type: boolean
-
     ContentPage:
       type: object
       required: [items, page, page_size, total_count]
@@ -1538,6 +1640,7 @@ components:
       - summary
       - content_type
       - language
+      - is_highlighted
       - asset_url
       - thumbnail_url
       - duration_seconds
@@ -1557,10 +1660,16 @@ components:
           $ref: '#/components/schemas/ContentType'
         language:
           $ref: '#/components/schemas/Language'
+        is_highlighted:
+          type: boolean
+          description: Whether the content is editorially highlighted ("À la une").
         asset_url:
           type: string
           format: uri
           nullable: true
+          description: |
+            Public primary delivery URL. For VIDEO content this is the HLS playlist URL used by
+            the mobile player.
         thumbnail_url:
           type: string
           format: uri
@@ -1572,7 +1681,6 @@ components:
           type: string
           format: date-time
           nullable: true
-
     ContentDetail:
       type: object
       required:
@@ -1583,6 +1691,8 @@ components:
       - summary
       - content_type
       - language
+      - is_highlighted
+      - body_markdown
       - asset_url
       - thumbnail_url
       - duration_seconds
@@ -1604,10 +1714,26 @@ components:
           $ref: '#/components/schemas/ContentType'
         language:
           $ref: '#/components/schemas/Language'
+        is_highlighted:
+          type: boolean
+          description: Whether the content is editorially highlighted ("À la une").
+        body_markdown:
+          type: string
+          nullable: true
+          description: |
+            Markdown body for TEXT content. Published TEXT content contains a non-empty Markdown
+            string; non-TEXT content returns null.
+
+            Supported formatting is limited to headings, paragraphs, bold, italic, ordered and
+            unordered lists, links, and blockquotes. Raw HTML, scripts, iframes, custom CSS,
+            embedded JavaScript, Markdown images, and embedded document layout are not supported.
         asset_url:
           type: string
           format: uri
           nullable: true
+          description: |
+            Public primary delivery URL. For VIDEO content this is the HLS playlist URL used by
+            the mobile player.
         thumbnail_url:
           type: string
           format: uri
@@ -1624,6 +1750,27 @@ components:
           format: date-time
           nullable: true
 
+    SetContentRatingRequest:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+
+    ContentRatingResponse:
+      type: object
+      required: [content_id, rating]
+      properties:
+        content_id:
+          type: integer
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
     PartnerLink:
       type: object
       required: [source_platform, display_label, url]
@@ -1934,6 +2081,7 @@ components:
           type: integer
           minimum: 1
           nullable: true
+          description: Required by convention for Content events; identifies the consulted public content item.
         center_id:
           type: integer
           minimum: 1
@@ -1958,12 +2106,16 @@ components:
           type: object
           additionalProperties: true
           nullable: true
-          description: >
+          description: |
             Optional small JSON object for non-sensitive analytics details.
             Must not contain personal data, names, phone numbers, exact GPS coordinates,
             free-text health declarations, or full chatbot transcripts.
             Recommended maximum serialized size: 4 KB.
 
+            For `content_viewed`, use `duration_sec` as a non-negative integer number of elapsed
+            consultation seconds and optionally `completed` as a boolean when completion can be
+            determined. Emit at most one `content_viewed` event per consultation when it ends;
+            do not use it as a heartbeat.
     AppEventAcceptedResponse:
       type: object
       required: [accepted]
