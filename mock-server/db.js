@@ -73,6 +73,157 @@ const db = {
     ],
     referrals: [],
   },
+
+  // ── Content (cms schema, contract v2.5.1) ────────────────────────────────
+  //
+  // Rows carry internal fields the wire format never exposes:
+  //   status      'PUBLISHED' | 'ARCHIVED'  — only PUBLISHED is mobile-visible
+  //   asset_path  relative media path, turned into an absolute URL at read time
+  //               from the requesting host (mirrors the real media gateway, and
+  //               keeps URLs reachable from the Android emulator's 10.0.2.2)
+  //   asset_external_url  used verbatim instead of asset_path (public HLS demo)
+  content: {
+    thematics: [
+      { thematic_id: 1, name: 'VIH', disease: 'HIV', sort_order: 10, is_active: true },
+      { thematic_id: 2, name: 'Hépatites', disease: 'HEPATITIS', sort_order: 20, is_active: true },
+      { thematic_id: 3, name: 'Syphilis', disease: 'SYPHILIS', sort_order: 30, is_active: true },
+      { thematic_id: 4, name: 'Général', disease: 'ALL', sort_order: 40, is_active: true },
+    ],
+
+    items: [
+      {
+        content_id: 1,
+        thematic_id: 1,
+        thematic_name: 'VIH',
+        title: 'Comprendre le dépistage du VIH',
+        summary: 'Pourquoi, quand et où se faire dépister.',
+        content_type: 'VIDEO',
+        language: 'fr',
+        is_highlighted: true,
+        body_markdown: null,
+        // Apple's public HLS example: a master playlist with relative variant
+        // paths, same shape as the backend's own output.
+        asset_external_url:
+          'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8',
+        asset_path: null,
+        thumbnail_path: '/media/content/1/thumbnail/poster.jpg',
+        duration_seconds: 173,
+        source_name: 'MSPS',
+        source_reference: 'Programme national de dépistage',
+        published_at: '2026-08-20T09:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 2,
+        thematic_id: 1,
+        thematic_name: 'VIH',
+        title: 'Le VIH en 5 questions',
+        summary: 'Les réponses aux idées reçues les plus fréquentes.',
+        content_type: 'TEXT',
+        language: 'fr',
+        is_highlighted: false,
+        body_markdown:
+          '# Le VIH en 5 questions\n\n' +
+          "Le VIH est un virus qui s'attaque au système immunitaire.\n\n" +
+          '## 1. Comment se transmet-il ?\n\n' +
+          'Principalement par voie **sexuelle**, sanguine, ou de la mère à l\'enfant.\n\n' +
+          '## 2. Peut-on en guérir ?\n\n' +
+          "Il n'existe pas de guérison, mais les traitements permettent de vivre normalement.\n\n" +
+          '- Un traitement précoce est plus efficace\n' +
+          '- Une charge virale indétectable rend le virus intransmissible\n\n' +
+          '> Se faire dépister est la seule façon de connaître son statut.\n',
+        asset_external_url: null,
+        asset_path: null,
+        thumbnail_path: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Fiche d\'information officielle',
+        published_at: '2026-08-18T14:30:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 3,
+        thematic_id: 2,
+        thematic_name: 'Hépatites',
+        title: 'Prévenir les hépatites virales',
+        summary: 'Gestes de prévention et situations où demander conseil.',
+        content_type: 'INFOGRAPHIC',
+        language: 'fr',
+        is_highlighted: true,
+        body_markdown: null,
+        asset_external_url: null,
+        asset_path: '/media/content/3/infographic/prevention.png',
+        thumbnail_path: '/media/content/3/thumbnail/poster.jpg',
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Support de sensibilisation aux hépatites',
+        published_at: '2026-08-15T10:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 4,
+        thematic_id: 3,
+        thematic_name: 'Syphilis',
+        title: 'التعرف على مرض الزهري',
+        summary: 'الأعراض وطرق الوقاية.',
+        content_type: 'AUDIO',
+        language: 'ar',
+        is_highlighted: false,
+        body_markdown: null,
+        asset_external_url: null,
+        asset_path: '/media/content/4/audio/syphilis.mp3',
+        thumbnail_path: null,
+        duration_seconds: 245,
+        source_name: 'MSPS',
+        source_reference: 'حملة التوعية الوطنية',
+        published_at: '2026-08-10T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 5,
+        thematic_id: 4,
+        thematic_name: 'Général',
+        title: 'أين يمكنني إجراء الفحص؟',
+        summary: 'دليل مراكز الفحص المجاني.',
+        content_type: 'TEXT',
+        language: 'ar',
+        is_highlighted: false,
+        body_markdown:
+          '# أين يمكنني إجراء الفحص؟\n\n'
+          + 'الفحص **مجاني** في جميع المراكز الصحية العمومية.\n\n'
+          + '- لا حاجة إلى موعد مسبق\n'
+          + '- النتائج سرية تماما\n',
+        asset_external_url: null,
+        asset_path: null,
+        thumbnail_path: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'دليل المستعمل',
+        published_at: '2026-08-05T12:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 6,
+        thematic_id: 2,
+        thematic_name: 'Hépatites',
+        title: 'Ancienne campagne hépatite B',
+        summary: 'Contenu retiré du catalogue mobile.',
+        content_type: 'VIDEO',
+        language: 'fr',
+        is_highlighted: false,
+        body_markdown: null,
+        asset_external_url: null,
+        asset_path: '/media/content/6/hls/master.m3u8',
+        thumbnail_path: null,
+        duration_seconds: 90,
+        source_name: 'MSPS',
+        source_reference: 'Campagne 2024',
+        published_at: '2026-07-01T09:00:00Z',
+        // Must never appear in GET /content, and its detail must return 404.
+        status: 'ARCHIVED',
+      },
+    ],
+  },
 };
 
 const VALID = {
@@ -83,6 +234,8 @@ const VALID = {
   language: ['fr', 'ar'],
   platform: ['android', 'ios'],
   center_referral_source: ['map', 'quiz', 'chatbot', 'notification'],
+  // ⚠️ UPPERCASE CMS codes, unlike every other enum in this API.
+  content_type: ['TEXT', 'INFOGRAPHIC', 'VIDEO', 'AUDIO'],
   environment_type: ['r', 'u', 's', 'h'],
 };
 
