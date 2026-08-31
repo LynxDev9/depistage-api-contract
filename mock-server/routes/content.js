@@ -11,16 +11,20 @@ const router = express.Router();
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
-// Builds the absolute public media URL from the host that was actually called,
-// exactly like the real media gateway does at read time. Hardcoding a host
-// would break the Android emulator, which reaches this server on 10.0.2.2.
-function mediaUrl(req, path) {
-  if (!path) return null;
-  return `${req.protocol}://${req.get('host')}${path}`;
+// Resolves a seeded media value into the absolute public URL the contract
+// requires. An absolute URL is returned verbatim; a relative path is made
+// absolute from the host that was actually called — exactly like the real media
+// gateway does at read time. Hardcoding a host would break the Android
+// emulator, which reaches this server on 10.0.2.2.
+function mediaUrl(req, value) {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${req.protocol}://${req.get('host')}${value}`;
 }
 
-// Projects an internal row onto the wire shape. `status`, `asset_path`,
-// `thumbnail_path` and `asset_external_url` are internal and never exposed.
+// Projects a stored row onto the contract's `ContentListItem`. Field names match
+// the contract one-for-one; `status` is the only internal field and is dropped
+// here rather than spread, so it can never reach the wire.
 function toListItem(req, row) {
   return {
     content_id: row.content_id,
@@ -31,8 +35,8 @@ function toListItem(req, row) {
     content_type: row.content_type,
     language: row.language,
     is_highlighted: row.is_highlighted,
-    asset_url: row.asset_external_url || mediaUrl(req, row.asset_path),
-    thumbnail_url: mediaUrl(req, row.thumbnail_path),
+    asset_url: mediaUrl(req, row.asset_url),
+    thumbnail_url: mediaUrl(req, row.thumbnail_url),
     duration_seconds: row.duration_seconds,
     published_at: row.published_at,
   };
