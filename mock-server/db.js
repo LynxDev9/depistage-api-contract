@@ -76,12 +76,16 @@ const db = {
 
   // ── Content (cms schema, contract v2.5.1) ────────────────────────────────
   //
-  // Rows carry internal fields the wire format never exposes:
-  //   status      'PUBLISHED' | 'ARCHIVED'  — only PUBLISHED is mobile-visible
-  //   asset_path  relative media path, turned into an absolute URL at read time
-  //               from the requesting host (mirrors the real media gateway, and
-  //               keeps URLs reachable from the Android emulator's 10.0.2.2)
-  //   asset_external_url  used verbatim instead of asset_path (public HLS demo)
+  // Field names match the contract's ContentListItem / ContentDetail exactly,
+  // so what is seeded here is what goes on the wire. The single exception is
+  // `status` ('PUBLISHED' | 'ARCHIVED'), internal server state that is never
+  // exposed — only PUBLISHED rows are mobile-visible.
+  //
+  // `asset_url` and `thumbnail_url` accept either form:
+  //   * an absolute `http(s)://…` URL, returned verbatim;
+  //   * a relative `/…` path, turned into an absolute URL at read time from the
+  //     requesting host — mirrors the real media gateway, and keeps URLs
+  //     reachable from the Android emulator's 10.0.2.2.
   content: {
     thematics: [
       { thematic_id: 1, name: 'VIH', disease: 'HIV', sort_order: 10, is_active: true },
@@ -103,10 +107,9 @@ const db = {
         body_markdown: null,
         // Apple's public HLS example: a master playlist with relative variant
         // paths, same shape as the backend's own output.
-        asset_external_url:
+        asset_url:
           'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8',
-        asset_path: null,
-        thumbnail_path: '/media/content/1/thumbnail/poster.jpg',
+        thumbnail_url: 'https://placehold.co/240x240/4a5fc1/ffffff.png',
         duration_seconds: 173,
         source_name: 'MSPS',
         source_reference: 'Programme national de dépistage',
@@ -132,9 +135,8 @@ const db = {
           '- Un traitement précoce est plus efficace\n' +
           '- Une charge virale indétectable rend le virus intransmissible\n\n' +
           '> Se faire dépister est la seule façon de connaître son statut.\n',
-        asset_external_url: null,
-        asset_path: null,
-        thumbnail_path: null,
+        asset_url: null,
+        thumbnail_url: null,
         duration_seconds: null,
         source_name: 'MSPS',
         source_reference: 'Fiche d\'information officielle',
@@ -151,9 +153,10 @@ const db = {
         language: 'fr',
         is_highlighted: true,
         body_markdown: null,
-        asset_external_url: null,
-        asset_path: '/media/content/3/infographic/prevention.png',
-        thumbnail_path: '/media/content/3/thumbnail/poster.jpg',
+        asset_url: 'https://placehold.co/800x600/1d9e75/ffffff.png',
+        // Chemin relatif : rendu absolu au read time. Volontairement cassé —
+        // il n'existe pas de route /media, ce qui valide le repli sur l'icône.
+        thumbnail_url: '/media/content/3/thumbnail/missing.jpg',
         duration_seconds: null,
         source_name: 'MSPS',
         source_reference: 'Support de sensibilisation aux hépatites',
@@ -170,9 +173,8 @@ const db = {
         language: 'ar',
         is_highlighted: false,
         body_markdown: null,
-        asset_external_url: null,
-        asset_path: '/media/content/4/audio/syphilis.mp3',
-        thumbnail_path: null,
+        asset_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+        thumbnail_url: null,
         duration_seconds: 245,
         source_name: 'MSPS',
         source_reference: 'حملة التوعية الوطنية',
@@ -193,9 +195,8 @@ const db = {
           + 'الفحص **مجاني** في جميع المراكز الصحية العمومية.\n\n'
           + '- لا حاجة إلى موعد مسبق\n'
           + '- النتائج سرية تماما\n',
-        asset_external_url: null,
-        asset_path: null,
-        thumbnail_path: null,
+        asset_url: null,
+        thumbnail_url: null,
         duration_seconds: null,
         source_name: 'MSPS',
         source_reference: 'دليل المستعمل',
@@ -212,9 +213,8 @@ const db = {
         language: 'fr',
         is_highlighted: false,
         body_markdown: null,
-        asset_external_url: null,
-        asset_path: '/media/content/6/hls/master.m3u8',
-        thumbnail_path: null,
+        asset_url: '/media/content/6/hls/master.m3u8',
+        thumbnail_url: null,
         duration_seconds: 90,
         source_name: 'MSPS',
         source_reference: 'Campagne 2024',
