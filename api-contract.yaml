@@ -3,6 +3,13 @@ info:
   title: App API
   description: |
 
+    **v2.6.0 - Disease taxonomy expansion**
+
+    Replaces the four legacy thematic disease tokens with a fixed 18-code taxonomy covering
+    broad all/viral/bacterial/parasitic groupings and their supported infections. Response shapes,
+    routes, and exact `thematic_id` filtering semantics are unchanged; grouping codes identify
+    broad thematics and do not aggregate content assigned to child disease thematics.
+
     **v2.5.1 - Stable media delivery clarification**
 
     Documentation-only alignment with the finalized backend media gateway. Content response shapes
@@ -103,7 +110,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 2.5.1
+  version: 2.6.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -1078,8 +1085,8 @@ paths:
               example:
               - thematic_id: 1
                 name: "VIH"
-                disease: "HIV"
-                sort_order: 10
+                disease: "vHiv"
+                sort_order: 110
                 is_active: true
         '429':
           $ref: '#/components/responses/TooManyRequests'
@@ -1629,8 +1636,13 @@ components:
           type: string
         disease:
           type: string
-          enum: [HIV, HEPATITIS, SYPHILIS, ALL]
-          description: Stable thematic disease code. `ALL` is the code for the General thematic; do not use `GENERAL`.
+          enum: [all, viral, bacterial, parasitic, vHiv, vHepatitisB, vHepatitisC, vHpv, vHsv, bChlamydia, bGonorrhea, bSyphilis, bChancroid, bLymphogranulomaVenereum, bDonovanosis, pTrichomoniasis, pPubicLice, pScabies]
+          description: |
+            Stable thematic disease code. `all`, `viral`, `bacterial`, and `parasitic` identify
+            broad grouping thematics. Codes beginning with `v` identify viral infections, codes
+            beginning with `b` identify bacterial infections, and codes beginning with `p`
+            identify parasitic infections. A grouping thematic is an exact thematic selection;
+            it does not aggregate content assigned to disease-specific thematics.
         sort_order:
           type: integer
         is_active:
