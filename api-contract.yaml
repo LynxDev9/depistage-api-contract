@@ -3,10 +3,17 @@ info:
   title: App API
   description: |
 
+    **v2.6.1 - Contract/runtime alignment corrections**
+
+    Documentation-only reconciliation with the current API runtime. Declares `429 Too Many Requests`
+    on the rate-limited Geo CMS and partner-link reads, aligns Phase 26 disease terminology and
+    examples, and documents the server-selected thumbnail fallback rules introduced by Phase 25.
+    Routes, request/response fields, authentication semantics, and filtering behavior are unchanged.
+
     **v2.6.0 - Disease taxonomy expansion**
 
     Replaces the four legacy thematic disease tokens with a fixed 18-code taxonomy covering
-    broad all/viral/bacterial/parasitic groupings and their supported infections. Response shapes,
+    broad all/viral/bacterial/parasitic groupings and their supported infections and infestations. Response shapes,
     routes, and exact `thematic_id` filtering semantics are unchanged; grouping codes identify
     broad thematics and do not aggregate content assigned to child disease thematics.
 
@@ -110,7 +117,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 2.6.0
+  version: 2.6.1
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -503,6 +510,9 @@ paths:
                 name: "Tanger-Tétouan-Al Hoceima"
                 region_code: "01"
                 is_active: true
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/regions/{region_id}:
     get:
@@ -532,6 +542,9 @@ paths:
               example:
                 error: "NOT_FOUND"
                 message: "Region not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/provinces:
     get:
@@ -554,6 +567,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Province'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/provinces/{province_id}:
     get:
@@ -583,6 +599,9 @@ paths:
               example:
                 error: "NOT_FOUND"
                 message: "Province not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/communes:
     get:
@@ -617,6 +636,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Commune'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/communes/{commune_id}:
     get:
@@ -646,6 +668,9 @@ paths:
               example:
                 error: "NOT_FOUND"
                 message: "Commune not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/categories:
     get:
@@ -668,6 +693,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Category'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/categories/{category_id}:
     get:
@@ -697,6 +725,9 @@ paths:
               example:
                 error: "NOT_FOUND"
                 message: "Category not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/centers:
     get:
@@ -743,6 +774,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Center'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/centers/{center_id}:
     get:
@@ -774,6 +808,9 @@ paths:
                 message: "Center not found."
 
   # ── Geolocation (App, CRUD) ────────────────────────────────────────────────
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
   /geo/referrals:
     get:
@@ -1116,7 +1153,11 @@ paths:
         - `VIDEO` content is visible only when an eligible READY HLS playlist exists; its `.m3u8`
           playlist URL is returned as `asset_url`. Relative HLS segment URLs are resolved by the player.
         - `AUDIO` content uses its eligible READY audio asset.
-        - `thumbnail_url` is used only for the public thumbnail when one is available.
+        - `thumbnail_url` is selected by the server using this precedence:
+          - VIDEO: custom thumbnail, then generated video-frame thumbnail; otherwise null.
+          - AUDIO: custom thumbnail, then generated waveform thumbnail, then the standard audio thumbnail.
+          - TEXT: custom thumbnail, then the standard text thumbnail.
+          - INFOGRAPHIC: custom thumbnail when present; otherwise null.
         - URLs returned in `asset_url` / `thumbnail_url` can be requested without
           `MobileAnonymousBearer`; the server still re-checks publication/readiness on each request.
         - Internal Garage addresses, storage keys, ORIGINAL video files, and processing assets are not exposed.
@@ -1184,7 +1225,7 @@ paths:
                 items:
                 - content_id: 44
                   thematic_id: 2
-                  thematic_name: "Hepatites"
+                  thematic_name: "Infections virales"
                   title: "Prévenir les hépatites virales"
                   summary: "Gestes de prévention et situations où demander conseil."
                   content_type: "VIDEO"
@@ -1232,7 +1273,11 @@ paths:
         - `VIDEO` content is visible only when an eligible READY HLS playlist exists; its `.m3u8`
           playlist URL is returned as `asset_url`. Relative HLS segment URLs are resolved by the player.
         - `AUDIO` content uses its eligible READY audio asset.
-        - `thumbnail_url` is used only for the public thumbnail when one is available.
+        - `thumbnail_url` is selected by the server using this precedence:
+          - VIDEO: custom thumbnail, then generated video-frame thumbnail; otherwise null.
+          - AUDIO: custom thumbnail, then generated waveform thumbnail, then the standard audio thumbnail.
+          - TEXT: custom thumbnail, then the standard text thumbnail.
+          - INFOGRAPHIC: custom thumbnail when present; otherwise null.
         - URLs returned in `asset_url` / `thumbnail_url` can be requested without
           `MobileAnonymousBearer`; the server still re-checks publication/readiness on each request.
         - Internal Garage addresses, storage keys, ORIGINAL video files, and processing assets are not exposed.
@@ -1262,7 +1307,7 @@ paths:
               example:
                 content_id: 44
                 thematic_id: 2
-                thematic_name: "Hepatites"
+                thematic_name: "Infections virales"
                 title: "Prévenir les hépatites virales"
                 summary: "Gestes de prévention et situations où demander conseil."
                 content_type: "VIDEO"
@@ -1377,6 +1422,9 @@ paths:
               - source_platform: "SANTE_JEUNES"
                 display_label: "Sante Jeunes"
                 url: "https://santejeunes.example.msps.test"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 
 components:
 
@@ -1641,7 +1689,7 @@ components:
             Stable thematic disease code. `all`, `viral`, `bacterial`, and `parasitic` identify
             broad grouping thematics. Codes beginning with `v` identify viral infections, codes
             beginning with `b` identify bacterial infections, and codes beginning with `p`
-            identify parasitic infections. A grouping thematic is an exact thematic selection;
+            identify parasitic infections or infestations. A grouping thematic is an exact thematic selection;
             it does not aggregate content assigned to disease-specific thematics.
         sort_order:
           type: integer
@@ -1717,10 +1765,12 @@ components:
           format: uri
           nullable: true
           description: |
-            Absolute public thumbnail URL generated by the server at read time when a mobile-visible
-            thumbnail exists. Treat it as opaque and use it exactly as returned. It does not require
-            `MobileAnonymousBearer`, and it may later return `404` if the parent content is no longer
-            mobile-visible.
+            Absolute public thumbnail URL selected by the server at read time. Custom thumbnails
+            override generated/default fallbacks. VIDEO has no default fallback; AUDIO falls back to
+            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; INFOGRAPHIC
+            has no default fallback. Treat the URL as opaque and use it exactly as returned. It does
+            not require `MobileAnonymousBearer`. It may return `404` if the selected thumbnail object
+            is unavailable or if the parent content is no longer mobile-visible.
         duration_seconds:
           type: integer
           nullable: true
@@ -1792,10 +1842,12 @@ components:
           format: uri
           nullable: true
           description: |
-            Absolute public thumbnail URL generated by the server at read time when a mobile-visible
-            thumbnail exists. Treat it as opaque and use it exactly as returned. It does not require
-            `MobileAnonymousBearer`, and it may later return `404` if the parent content is no longer
-            mobile-visible.
+            Absolute public thumbnail URL selected by the server at read time. Custom thumbnails
+            override generated/default fallbacks. VIDEO has no default fallback; AUDIO falls back to
+            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; INFOGRAPHIC
+            has no default fallback. Treat the URL as opaque and use it exactly as returned. It does
+            not require `MobileAnonymousBearer`. It may return `404` if the selected thumbnail object
+            is unavailable or if the parent content is no longer mobile-visible.
         duration_seconds:
           type: integer
           nullable: true
