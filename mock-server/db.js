@@ -87,11 +87,26 @@ const db = {
   //     requesting host — mirrors the real media gateway, and keeps URLs
   //     reachable from the Android emulator's 10.0.2.2.
   content: {
+    // `disease` uses the v2.6.0 taxonomy verbatim (see VALID.disease, which is
+    // asserted against this seed at boot). `sort_order` follows the contract's
+    // own example — groupings on the hundreds, their infections in between —
+    // so the ordering stays readable as the CMS grows.
+    //
+    // `viral` is seeded as a grouping thematic to keep an honest fixture of the
+    // contract's rule: a grouping is an exact selection, it does NOT aggregate
+    // content filed under vHiv / vHepatitisB / vHepatitisC. Thematics 7 and 8
+    // deliberately carry no content, which exercises the app's empty state.
     thematics: [
-      { thematic_id: 1, name: 'VIH', disease: 'HIV', sort_order: 10, is_active: true },
-      { thematic_id: 2, name: 'Hépatites', disease: 'HEPATITIS', sort_order: 20, is_active: true },
-      { thematic_id: 3, name: 'Syphilis', disease: 'SYPHILIS', sort_order: 30, is_active: true },
-      { thematic_id: 4, name: 'Général', disease: 'ALL', sort_order: 40, is_active: true },
+      { thematic_id: 4, name: 'Général', disease: 'all', sort_order: 10, is_active: true },
+      { thematic_id: 5, name: 'Infections virales', disease: 'viral', sort_order: 100, is_active: true },
+      { thematic_id: 9, name: 'Bactériennes', disease: 'bacterial', sort_order: 103, is_active: true },
+      { thematic_id: 10, name: 'Parasitaires', disease: 'parasitic', sort_order: 107, is_active: true },
+      { thematic_id: 1, name: 'VIH', disease: 'vHiv', sort_order: 110, is_active: true },
+      { thematic_id: 2, name: 'Hépatite B', disease: 'vHepatitisB', sort_order: 120, is_active: true },
+      { thematic_id: 6, name: 'Hépatite C', disease: 'vHepatitisC', sort_order: 130, is_active: true },
+      { thematic_id: 7, name: 'Chlamydia', disease: 'bChlamydia', sort_order: 210, is_active: true },
+      { thematic_id: 3, name: 'Syphilis', disease: 'bSyphilis', sort_order: 230, is_active: true },
+      { thematic_id: 8, name: 'Trichomonase', disease: 'pTrichomoniasis', sort_order: 310, is_active: true },
     ],
 
     items: [
@@ -146,7 +161,7 @@ const db = {
       {
         content_id: 3,
         thematic_id: 2,
-        thematic_name: 'Hépatites',
+        thematic_name: 'Hépatite B',
         title: 'Prévenir les hépatites virales',
         summary: 'Gestes de prévention et situations où demander conseil.',
         content_type: 'INFOGRAPHIC',
@@ -204,9 +219,35 @@ const db = {
         status: 'PUBLISHED',
       },
       {
+        content_id: 7,
+        thematic_id: 5,
+        thematic_name: 'Infections virales',
+        title: 'Les IST virales : ce qu il faut savoir',
+        summary: 'Vue d ensemble des infections virales et de leur prevention.',
+        content_type: 'TEXT',
+        language: 'fr',
+        is_highlighted: false,
+        body_markdown:
+          '# Les IST virales\n\n'
+          + 'Plusieurs virus se transmettent lors des rapports sexuels.\n\n'
+          + '- **VIH** : affaiblit le systeme immunitaire\n'
+          + '- **Hepatites B et C** : atteignent le foie\n'
+          + '- **HPV** : peut provoquer des lesions\n\n'
+          + "Le preservatif et la vaccination reduisent fortement le risque.\n",
+        asset_url: null,
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Fiche de synthese',
+        published_at: '2026-08-22T11:00:00Z',
+        // Filed directly on the `viral` GROUPING thematic. Filtering on the VIH
+        // thematic must NOT return it — grouping thematics do not aggregate.
+        status: 'PUBLISHED',
+      },
+      {
         content_id: 6,
         thematic_id: 2,
-        thematic_name: 'Hépatites',
+        thematic_name: 'Hépatite B',
         title: 'Ancienne campagne hépatite B',
         summary: 'Contenu retiré du catalogue mobile.',
         content_type: 'VIDEO',
@@ -234,10 +275,30 @@ const VALID = {
   language: ['fr', 'ar'],
   platform: ['android', 'ios'],
   center_referral_source: ['map', 'quiz', 'chatbot', 'notification'],
+  // Thematic disease taxonomy, contract v2.6.0. camelCase — neither the
+  // lowercase snake_case of most enums nor the UPPERCASE of `content_type`.
+  disease: [
+    'all', 'viral', 'bacterial', 'parasitic',
+    'vHiv', 'vHepatitisB', 'vHepatitisC', 'vHpv', 'vHsv',
+    'bChlamydia', 'bGonorrhea', 'bSyphilis', 'bChancroid',
+    'bLymphogranulomaVenereum', 'bDonovanosis',
+    'pTrichomoniasis', 'pPubicLice', 'pScabies',
+  ],
   // ⚠️ UPPERCASE CMS codes, unlike every other enum in this API.
   content_type: ['TEXT', 'INFOGRAPHIC', 'VIDEO', 'AUDIO'],
   environment_type: ['r', 'u', 's', 'h'],
 };
+
+// Eighteen camelCase codes are easy to mistype, and a typo would surface only
+// as a thematic the app silently degrades to `unknown`. Fail at boot instead.
+for (const thematic of db.content.thematics) {
+  if (!VALID.disease.includes(thematic.disease)) {
+    throw new Error(
+      `Seed error: thematic ${thematic.thematic_id} has disease '${thematic.disease}', ` +
+      'which is not in the contract enum.',
+    );
+  }
+}
 
 function validate(body, rules) {
   for (const [field, values] of Object.entries(rules)) {
