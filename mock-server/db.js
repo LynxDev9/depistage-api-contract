@@ -245,6 +245,27 @@ const db = {
         status: 'PUBLISHED',
       },
       {
+        content_id: 8,
+        thematic_id: 6,
+        thematic_name: 'Hépatite C',
+        title: 'الوقاية من التهاب الكبد C',
+        summary: 'كيف ينتقل الفيروس وكيف نحمي أنفسنا.',
+        content_type: 'INFOGRAPHIC',
+        language: 'ar',
+        // Le plus recent des contenus mis en avant, et le seul en arabe : sur
+        // l'accueil il doit passer APRES les contenus francais quand l'app est
+        // en francais, et en tete quand elle est en arabe.
+        is_highlighted: true,
+        body_markdown: null,
+        asset_url: 'https://placehold.co/800x600/c1554a/ffffff.png',
+        thumbnail_url: 'https://placehold.co/240x240/c1554a/ffffff.png',
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'حملة التوعية بالتهاب الكبد',
+        published_at: '2026-08-28T09:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
         content_id: 6,
         thematic_id: 2,
         thematic_name: 'Hépatite B',
