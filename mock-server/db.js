@@ -87,6 +87,12 @@ const db = {
   //     requesting host — mirrors the real media gateway, and keeps URLs
   //     reachable from the Android emulator's 10.0.2.2.
   content: {
+    // One current rating per (device, content), contract v2.7.0:
+    //   { device_uuid, content_id, rating }
+    // A PUT replaces the row in place — the contract keeps no history, and no
+    // review, like, or moderation data hangs off it.
+    ratings: [],
+
     // `disease` uses the v2.6.0 taxonomy verbatim (see VALID.disease, which is
     // asserted against this seed at boot). `sort_order` follows the contract's
     // own example — groupings on the hundreds, their infections in between —
