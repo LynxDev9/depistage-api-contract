@@ -3,6 +3,18 @@ info:
   title: App API
   description: |
 
+    **v2.7.0 - Current content rating read + mobile schema field index**
+
+    Adds authenticated `GET /content/{content_id}/rating` so the mobile app can read the
+    authenticated device's current rating before showing or editing it. A mobile-visible content
+    item with no rating returns `200` with `rating: null`; `404` remains reserved for content that
+    does not exist or is not mobile-visible. Existing `PUT /content/{content_id}/rating` continues
+    to create or replace the current rating.
+
+    Adds a non-authoritative `x-mobile-schema-field-index` at the end of the contract as a
+    convenience index of request/response field names. `components/schemas` remains authoritative
+    for types, required fields, nullability, validation, and enum values.
+
     **v2.6.1 - Contract/runtime alignment corrections**
 
     Documentation-only reconciliation with the current API runtime. Declares `429 Too Many Requests`
@@ -117,7 +129,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 2.6.1
+  version: 2.7.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -150,8 +162,9 @@ tags:
 - name: Content
   description: |
     Published educational content for the mobile application and authenticated anonymous-device
-    content rating. Read endpoints are public and expose only mobile-visible published content.
-    Rating requires `MobileAnonymousBearer`. Content administration remains internal to AdminWeb.
+    content rating. Content-list/detail/thematic reads are public and expose only mobile-visible
+    published content. Rating read/write operations require `MobileAnonymousBearer`. Content
+    administration remains internal to AdminWeb.
 - name: Partner links
   description: |
     Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
@@ -1333,6 +1346,62 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
   /content/{content_id}/rating:
+    get:
+      tags: [Content]
+      summary: Get the current device rating for content
+      description: |
+        Returns the authenticated anonymous device's current rating for one mobile-visible content
+        item. Device identity is derived only from `MobileAnonymousBearer`; no device identifier is
+        accepted from the request.
+
+        If the content is mobile-visible but the authenticated device has never rated it, the API
+        returns `200` with `rating: null`. This lets the client distinguish "not rated yet" from
+        "content does not exist / is not mobile-visible".
+
+        Missing, unpublished, archived, draft, review-state, or otherwise non-mobile-visible content
+        returns `404 NOT_FOUND`. The endpoint does not expose another device's rating.
+      security:
+      - MobileAnonymousBearer: []
+      parameters:
+      - name: content_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        example: 44
+      responses:
+        '200':
+          description: Current rating state for the authenticated anonymous device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentCurrentRatingResponse'
+              examples:
+                rated:
+                  summary: The device has already rated this content
+                  value:
+                    content_id: 44
+                    rating: 4
+                not_rated:
+                  summary: The device has not rated this content yet
+                  value:
+                    content_id: 44
+                    rating:
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '404':
+          description: Content not found or not mobile-visible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Content not found."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
     put:
       tags: [Content]
       summary: Set the current device rating for content
@@ -1870,6 +1939,22 @@ components:
           minimum: 1
           maximum: 5
 
+    ContentCurrentRatingResponse:
+      type: object
+      required: [content_id, rating]
+      description: |
+        Current rating state for the authenticated anonymous device. `rating` is null when the
+        mobile-visible content has not yet been rated by this device.
+      properties:
+        content_id:
+          type: integer
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          nullable: true
+
     ContentRatingResponse:
       type: object
       required: [content_id, rating]
@@ -2243,3 +2328,85 @@ components:
         message:
           type: string
           example: "Human-readable error description."
+
+x-mobile-schema-field-index:
+  description: |
+    Convenience field-name index for the mobile developer. This section intentionally does not
+    duplicate types, required/optional rules, nullability, limits, formats, or enum values.
+    For those rules, `components/schemas` above is the authoritative contract.
+  schemas:
+    CreateDeviceProfileRequest:
+      schema: '#/components/schemas/CreateDeviceProfileRequest'
+      fields: [device_uuid, user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token]
+    UpdateDeviceProfileRequest:
+      schema: '#/components/schemas/UpdateDeviceProfileRequest'
+      fields: [user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token]
+    DeviceProfileResponse:
+      schema: '#/components/schemas/DeviceProfileResponse'
+      fields: [device_uuid, user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token, created_at]
+    CreateSessionRequest:
+      schema: '#/components/schemas/CreateSessionRequest'
+      fields: [device_uuid, platform, app_version]
+    EndSessionRequest:
+      schema: '#/components/schemas/EndSessionRequest'
+      fields: [duration_sec]
+    SessionResponse:
+      schema: '#/components/schemas/SessionResponse'
+      fields: [id, device_uuid, started_at, duration_sec, platform, app_version, access_token, token_type, expires_in]
+    Region:
+      schema: '#/components/schemas/Region'
+      fields: [region_id, name, region_code, is_active]
+    Province:
+      schema: '#/components/schemas/Province'
+      fields: [province_id, region_id, name, province_code, is_active]
+    Commune:
+      schema: '#/components/schemas/Commune'
+      fields: [commune_id, region_id, province_id, name, commune_code, is_active]
+    Category:
+      schema: '#/components/schemas/Category'
+      fields: [category_id, label, abbreviation, environment_type, is_active]
+    Center:
+      schema: '#/components/schemas/Center'
+      fields: [center_id, geo_code, name, region_id, province_id, category_id, commune_id, network, latitude, longitude, updated_at, is_active, commune_name]
+    CreateCenterReferralRequest:
+      schema: '#/components/schemas/CreateCenterReferralRequest'
+      fields: [device_uuid, center_id, quiz_result_id, source, followed_up]
+    UpdateCenterReferralRequest:
+      schema: '#/components/schemas/UpdateCenterReferralRequest'
+      fields: [quiz_result_id, source, followed_up]
+    CenterReferral:
+      schema: '#/components/schemas/CenterReferral'
+      fields: [id, device_uuid, center_id, quiz_result_id, source, followed_up]
+    RecordAppEventRequest:
+      schema: '#/components/schemas/RecordAppEventRequest'
+      fields: [device_uuid, session_id, event_name, module, content_id, center_id, region_id, province_id, language, channel, metadata]
+    AppEventAcceptedResponse:
+      schema: '#/components/schemas/AppEventAcceptedResponse'
+      fields: [accepted]
+    ContentThematic:
+      schema: '#/components/schemas/ContentThematic'
+      fields: [thematic_id, name, disease, sort_order, is_active]
+    ContentPage:
+      schema: '#/components/schemas/ContentPage'
+      fields: [items, page, page_size, total_count]
+    ContentListItem:
+      schema: '#/components/schemas/ContentListItem'
+      fields: [content_id, thematic_id, thematic_name, title, summary, content_type, language, is_highlighted, asset_url, thumbnail_url, duration_seconds, published_at]
+    ContentDetail:
+      schema: '#/components/schemas/ContentDetail'
+      fields: [content_id, thematic_id, thematic_name, title, summary, content_type, language, is_highlighted, body_markdown, asset_url, thumbnail_url, duration_seconds, source_name, source_reference, published_at]
+    SetContentRatingRequest:
+      schema: '#/components/schemas/SetContentRatingRequest'
+      fields: [rating]
+    ContentCurrentRatingResponse:
+      schema: '#/components/schemas/ContentCurrentRatingResponse'
+      fields: [content_id, rating]
+    ContentRatingResponse:
+      schema: '#/components/schemas/ContentRatingResponse'
+      fields: [content_id, rating]
+    PartnerLink:
+      schema: '#/components/schemas/PartnerLink'
+      fields: [source_platform, display_label, url]
+    ErrorResponse:
+      schema: '#/components/schemas/ErrorResponse'
+      fields: [error, message]
