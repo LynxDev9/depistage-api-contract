@@ -1,10 +1,13 @@
 // routes/content.js
 //
-// Published educational content — contract v2.5.1. All three reads are public:
-// no bearer token is validated here.
+// Published educational content — contract v2.7.0.
+//
+// The three catalogue reads are public: no bearer token is validated on them.
+// The two rating routes are protected, and `requireBearer` is applied per route
+// rather than on the router, so a missing token can never break browsing.
 
 const express = require('express');
-const { db, VALID, error } = require('../db');
+const { db, VALID, error, requireBearer } = require('../db');
 
 const router = express.Router();
 
@@ -140,19 +143,74 @@ router.get('/', (req, res) => {
   });
 });
 
-// GET /content/:content_id — detail of one mobile-visible content item
-router.get('/:content_id', (req, res) => {
-  const id = parsePositiveInt(req.params.content_id);
-  if (id === null || id === undefined) {
-    return error(res, 404, 'NOT_FOUND', 'Content not found.');
+// Resolves a mobile-visible content row from a raw path parameter, or null.
+//
+// The caller answers the same 404 whether the id is malformed, unknown,
+// archived or otherwise not mobile-visible — the API must never reveal that
+// internal content exists.
+function visibleContent(rawId) {
+  const id = parsePositiveInt(rawId);
+  if (id === null || id === undefined) return null;
+  const row = db.content.items.find(r => r.content_id === id);
+  if (!row || !isMobileVisible(row)) return null;
+  return row;
+}
+
+function findRating(deviceUuid, contentId) {
+  return db.content.ratings.find(
+    r => r.device_uuid === deviceUuid && r.content_id === contentId,
+  );
+}
+
+// GET /content/:content_id/rating — this device's current rating (protected).
+//
+// Declared before `/:content_id` for readability only; the two cannot collide,
+// they differ in segment count. The one ordering that does matter is
+// `/thematics` before `/:content_id`.
+router.get('/:content_id/rating', requireBearer, (req, res) => {
+  const row = visibleContent(req.params.content_id);
+  if (!row) return error(res, 404, 'NOT_FOUND', 'Content not found.');
+
+  const record = findRating(req.auth.device_uuid, row.content_id);
+  // `rating: null` means visible-but-never-rated. Deliberately not a 404: that
+  // status is reserved for content the device must not learn anything about.
+  return res.json({
+    content_id: row.content_id,
+    rating: record ? record.rating : null,
+  });
+});
+
+// PUT /content/:content_id/rating — set or replace this device's rating.
+//
+// The device comes from the JWT (`req.auth`), never from the body: the contract
+// does not accept a device identifier here at all.
+router.put('/:content_id/rating', requireBearer, (req, res) => {
+  const row = visibleContent(req.params.content_id);
+  if (!row) return error(res, 404, 'NOT_FOUND', 'Content not found.');
+
+  const { rating } = req.body || {};
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return error(res, 422, 'VALIDATION_ERROR', 'rating must be between 1 and 5.');
   }
 
-  const row = db.content.items.find(r => r.content_id === id);
-  // Same 404 whether it is missing, archived or otherwise not mobile-visible —
-  // the API must not reveal that internal content exists.
-  if (!row || !isMobileVisible(row)) {
-    return error(res, 404, 'NOT_FOUND', 'Content not found.');
+  const record = findRating(req.auth.device_uuid, row.content_id);
+  if (record) {
+    record.rating = rating;
+  } else {
+    db.content.ratings.push({
+      device_uuid: req.auth.device_uuid,
+      content_id: row.content_id,
+      rating,
+    });
   }
+
+  return res.json({ content_id: row.content_id, rating });
+});
+
+// GET /content/:content_id — detail of one mobile-visible content item
+router.get('/:content_id', (req, res) => {
+  const row = visibleContent(req.params.content_id);
+  if (!row) return error(res, 404, 'NOT_FOUND', 'Content not found.');
 
   return res.json(toDetail(req, row));
 });
