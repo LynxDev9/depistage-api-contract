@@ -272,6 +272,32 @@ const db = {
         status: 'PUBLISHED',
       },
       {
+        content_id: 9,
+        thematic_id: 4,
+        thematic_name: 'General',
+        title: 'Journee nationale de depistage',
+        summary: 'Depistage gratuit et sans rendez-vous dans les centres participants.',
+        content_type: 'EVENT',
+        language: 'fr',
+        is_highlighted: false,
+        // Same shape as a TEXT item: an event is a dated article, it carries a
+        // Markdown body and no media asset.
+        body_markdown:
+          '# Journee nationale de depistage\n\n'
+          + '**Date :** samedi 3 octobre 2026\n'
+          + '**Horaires :** de 9h a 17h\n\n'
+          + 'Le depistage est **gratuit** et sans rendez-vous.\n\n'
+          + '- Aucun document exige\n'
+          + '- Resultats confidentiels le jour meme\n',
+        asset_url: null,
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Programme national de depistage',
+        published_at: '2026-09-12T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
         content_id: 6,
         thematic_id: 2,
         thematic_name: 'Hépatite B',
@@ -312,9 +338,24 @@ const VALID = {
     'pTrichomoniasis', 'pPubicLice', 'pScabies',
   ],
   // ⚠️ UPPERCASE CMS codes, unlike every other enum in this API.
-  content_type: ['TEXT', 'INFOGRAPHIC', 'VIDEO', 'AUDIO'],
+  //
+  // ⚠️ `EVENT` is ahead of the contract: v2.7.0 still declares
+  // [TEXT, INFOGRAPHIC, VIDEO, AUDIO]. It is seeded here so the app's
+  // Événements filter is testable now, but the real backend will answer 422
+  // until Sahi adds the value. See BlaSmia-app/CHECKLIST-reunion-2026-09-08.md.
+  content_type: ['TEXT', 'INFOGRAPHIC', 'VIDEO', 'AUDIO', 'EVENT'],
   environment_type: ['r', 'u', 's', 'h'],
 };
+
+// A duplicate content_id silently shadows a row: GET /content/{id} answers with
+// whichever comes first, and the other becomes unreachable. Cheap to assert.
+const seenContentIds = new Set();
+for (const item of db.content.items) {
+  if (seenContentIds.has(item.content_id)) {
+    throw new Error(`Seed error: duplicate content_id ${item.content_id}.`);
+  }
+  seenContentIds.add(item.content_id);
+}
 
 // Eighteen camelCase codes are easy to mistype, and a typo would surface only
 // as a thematic the app silently degrades to `unknown`. Fail at boot instead.
