@@ -3,6 +3,23 @@ info:
   title: App API
   description: |
 
+    **v3.1.0 - Public center contact details**
+
+    Adds optional nullable `phone` and `address_line` to the public center representation returned
+    by `GET /geo/centers` and `GET /geo/centers/{center_id}`. Both are back-office maintained
+    strings returned exactly as stored, including a leading `+`, spaces and parentheses; clients
+    must not parse `phone` as a number. Either field is `null` when the value is unavailable.
+    Required fields, filtering, ordering, active-center rules, and route behavior are unchanged, so
+    clients that ignore unknown fields remain compatible.
+
+    **v3.0.0 - Mobile awareness banners (breaking change)**
+
+    Replaces the public `INFOGRAPHIC` content type with `BANNER`. Published banners reuse the
+    existing content list/detail and public media delivery model; all eligible banners are returned
+    regardless of highlighting. New clients emit analytics channel `banner`; deprecated
+    `infographic` remains accepted so historical and older-client analytics remain reportable.
+    Requests filtering by removed `content_type=INFOGRAPHIC` return `422 VALIDATION_ERROR`.
+
     **v2.7.1 - Completes mobile schema field descriptions**
 
     Documentation-only. Completes remaining `components/schemas` field descriptions for enums,
@@ -86,7 +103,7 @@ info:
     Content reads are public for the MVP; analytics and tracking remain separate through
     `POST /events`.
     Content `content_type` values intentionally use CMS content codes: `TEXT`,
-    `INFOGRAPHIC`, `VIDEO`, and `AUDIO`.
+    `BANNER`, `VIDEO`, and `AUDIO`.
 
     API contract for MSPS Dépistage — anonymous users, sessions, geolocation referentials, partner links, analytics ingestion, and published educational content.
 
@@ -135,7 +152,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 2.8.0
+  version: 3.1.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -1076,13 +1093,13 @@ paths:
         Canonical Content consultation convention:
         - Use `event_name: content_viewed` and `module: content`; there is no ContentView endpoint.
         - Send the consulted integer `content_id`, its `language`, and channel mapping
-          `TEXT -> text`, `INFOGRAPHIC -> infographic`, `AUDIO -> audio`, `VIDEO -> video`.
+          `TEXT -> text`, `BANNER -> banner`, `AUDIO -> audio`, `VIDEO -> video`.
         - Emit at most one `content_viewed` event per consultation when the consultation ends.
           Do not emit `content_viewed` periodically as a heartbeat.
         - Put elapsed consultation seconds in `metadata.duration_sec` as a non-negative integer.
         - Include the client-observed boolean `metadata.completed` only when the client can
           meaningfully determine completion. It is especially useful for VIDEO and AUDIO; TEXT
-          and INFOGRAPHIC may omit it when no deterministic completion rule exists.
+          and BANNER may omit it when no deterministic completion rule exists.
 
         Optional `metadata` must not contain personal data, names, phone numbers, exact GPS
         coordinates, free-text health declarations, or full chatbot transcripts.
@@ -1175,7 +1192,7 @@ paths:
         - Only `PUBLISHED` content is returned.
         - `DRAFT`, `READY_FOR_REVIEW`, and `ARCHIVED` content is hidden.
         - `TEXT` content may be returned without a media asset.
-        - `VIDEO`, `AUDIO`, and `INFOGRAPHIC` content is returned only when it has an eligible READY public media asset; the server generates the public URL at read time.
+        - `VIDEO`, `AUDIO`, and `BANNER` content is returned only when it has an eligible READY public media asset; the server generates the public URL at read time.
         - Internal storage and processing fields are never exposed.
 
         Public delivery selection:
@@ -1183,7 +1200,7 @@ paths:
           Treat them as opaque: do not construct `/media` paths, derive storage keys, assume a hostname,
           or persist the returned URL as a stable content identifier.
         - `TEXT` content does not require `asset_url`.
-        - `INFOGRAPHIC` content uses its eligible READY infographic asset.
+        - `BANNER` content uses its newest eligible READY banner asset (creation time descending, then asset id descending).
         - `VIDEO` content is visible only when an eligible READY HLS playlist exists; its `.m3u8`
           playlist URL is returned as `asset_url`. Relative HLS segment URLs are resolved by the player.
         - `AUDIO` content uses its eligible READY audio asset.
@@ -1191,7 +1208,7 @@ paths:
           - VIDEO: custom thumbnail, then generated video-frame thumbnail; otherwise null.
           - AUDIO: custom thumbnail, then generated waveform thumbnail, then the standard audio thumbnail.
           - TEXT: custom thumbnail, then the standard text thumbnail.
-          - INFOGRAPHIC: custom thumbnail when present; otherwise null.
+          - BANNER: custom thumbnail when present; otherwise null.
         - URLs returned in `asset_url` / `thumbnail_url` can be requested without
           `MobileAnonymousBearer`; the server still re-checks publication/readiness on each request.
         - Internal Garage addresses, storage keys, ORIGINAL video files, and processing assets are not exposed.
@@ -1303,7 +1320,7 @@ paths:
           Treat them as opaque: do not construct `/media` paths, derive storage keys, assume a hostname,
           or persist the returned URL as a stable content identifier.
         - `TEXT` content does not require `asset_url`.
-        - `INFOGRAPHIC` content uses its eligible READY infographic asset.
+        - `BANNER` content uses its newest eligible READY banner asset (creation time descending, then asset id descending).
         - `VIDEO` content is visible only when an eligible READY HLS playlist exists; its `.m3u8`
           playlist URL is returned as `asset_url`. Relative HLS segment URLs are resolved by the player.
         - `AUDIO` content uses its eligible READY audio asset.
@@ -1311,7 +1328,7 @@ paths:
           - VIDEO: custom thumbnail, then generated video-frame thumbnail; otherwise null.
           - AUDIO: custom thumbnail, then generated waveform thumbnail, then the standard audio thumbnail.
           - TEXT: custom thumbnail, then the standard text thumbnail.
-          - INFOGRAPHIC: custom thumbnail when present; otherwise null.
+          - BANNER: custom thumbnail when present; otherwise null.
         - URLs returned in `asset_url` / `thumbnail_url` can be requested without
           `MobileAnonymousBearer`; the server still re-checks publication/readiness on each request.
         - Internal Garage addresses, storage keys, ORIGINAL video files, and processing assets are not exposed.
@@ -1673,11 +1690,12 @@ components:
 
     AppEventChannel:
       type: string
-      enum: [text, infographic, audio, video, chatbot, notification]
+      enum: [text, banner, infographic, audio, video, chatbot, notification]
       description: |
         Optional analytics channel for how the user consumed or received the event subject.
-        Content events typically use `text`, `infographic`, `audio`, or `video` to match
-        `ContentType` in lowercase.
+        Content events typically use `text`, `banner`, `audio`, or `video` to match
+        `ContentType` in lowercase. `infographic` is deprecated but remains accepted for
+        historical data and older mobile clients; reporting groups it with `banner`.
 
     AppEventModule:
       type: string
@@ -1698,10 +1716,10 @@ components:
 
     ContentType:
       type: string
-      enum: [TEXT, INFOGRAPHIC, VIDEO, AUDIO]
+      enum: [TEXT, BANNER, VIDEO, AUDIO]
       description: |
         Published educational-content format. `TEXT` carries Markdown in `body_markdown`.
-        `INFOGRAPHIC` and `AUDIO` deliver a ready asset URL. `VIDEO` delivers an HLS playlist
+        `BANNER` and `AUDIO` deliver a ready asset URL. `VIDEO` delivers an HLS playlist
         URL in `asset_url`, not the original MP4.
 
     # ── DeviceProfile ──────────────────────────────────────
@@ -1909,7 +1927,7 @@ components:
           description: |
             Absolute public thumbnail URL selected by the server at read time. Custom thumbnails
             override generated/default fallbacks. VIDEO has no default fallback; AUDIO falls back to
-            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; INFOGRAPHIC
+            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; BANNER
             has no default fallback. Treat the URL as opaque and use it exactly as returned. It does
             not require `MobileAnonymousBearer`. It may return `404` if the selected thumbnail object
             is unavailable or if the parent content is no longer mobile-visible.
@@ -1997,7 +2015,7 @@ components:
           description: |
             Absolute public thumbnail URL selected by the server at read time. Custom thumbnails
             override generated/default fallbacks. VIDEO has no default fallback; AUDIO falls back to
-            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; INFOGRAPHIC
+            the standard audio thumbnail; TEXT falls back to the standard text thumbnail; BANNER
             has no default fallback. Treat the URL as opaque and use it exactly as returned. It does
             not require `MobileAnonymousBearer`. It may return `404` if the selected thumbnail object
             is unavailable or if the parent content is no longer mobile-visible.
@@ -2247,6 +2265,21 @@ components:
           nullable: true
           readOnly: true
           description: Commune display name (joined from cms.Commune). Not stored on Center.
+        phone:
+          type: string
+          nullable: true
+          description: |
+            Public contact telephone as maintained by the back office. Returned as an opaque
+            string with formatting preserved (leading `+`, spaces, parentheses); never parse it
+            as a number. Null when the value is unavailable.
+          example: "+212 5 37 00 00 00"
+        address_line:
+          type: string
+          nullable: true
+          description: |
+            Public postal or street address line as maintained by the back office. Null when the
+            value is unavailable.
+          example: "1 Avenue Mohammed V, Rabat"
 
     # ── Geolocation (App) ──────────────────────────────────
 
@@ -2550,7 +2583,7 @@ x-mobile-schema-field-index:
       fields: [category_id, label, abbreviation, environment_type, is_active]
     Center:
       schema: '#/components/schemas/Center'
-      fields: [center_id, geo_code, name, region_id, province_id, category_id, commune_id, network, latitude, longitude, updated_at, is_active, commune_name, operator_type]
+      fields: [center_id, geo_code, name, region_id, province_id, category_id, commune_id, network, latitude, longitude, updated_at, is_active, commune_name, operator_type, phone, address_line]
     CreateCenterReferralRequest:
       schema: '#/components/schemas/CreateCenterReferralRequest'
       fields: [device_uuid, center_id, quiz_result_id, source, followed_up]
