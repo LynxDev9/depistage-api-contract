@@ -89,12 +89,24 @@ router.get('/centers', (req, res) => {
     return error(res, 422, 'VALIDATION_ERROR', "Invalid value for query param 'active' (expected true/false)");
   }
 
+  // operator_type (v3.0.0): exact filter, MSPS or ONG. Empty, repeated
+  // (Express turns a repeated query key into an array) or unsupported values
+  // all fail the same 422 — none of them is a value this filter accepts.
+  const operatorType = req.query.operator_type;
+  if (
+    operatorType !== undefined &&
+    (typeof operatorType !== 'string' || !VALID.operator_type.includes(operatorType))
+  ) {
+    return error(res, 422, 'VALIDATION_ERROR', 'operator_type must be MSPS or ONG.');
+  }
+
   let out = db.geo.centers;
   if (regionId !== undefined && !Number.isNaN(regionId)) out = out.filter(c => c.region_id === regionId);
   if (provinceId !== undefined && !Number.isNaN(provinceId)) out = out.filter(c => c.province_id === provinceId);
   if (categoryId !== undefined && !Number.isNaN(categoryId)) out = out.filter(c => c.category_id === categoryId);
   if (communeId !== undefined && !Number.isNaN(communeId)) out = out.filter(c => c.commune_id === communeId);
   if (active !== undefined) out = out.filter(c => c.is_active === active);
+  if (operatorType !== undefined) out = out.filter(c => c.operator_type === operatorType);
   return res.json(out);
 });
 

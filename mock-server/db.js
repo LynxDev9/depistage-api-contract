@@ -39,6 +39,11 @@ const db = {
         updated_at: new Date().toISOString(),
         is_active: true,
         commune_name: 'Rabat',
+        operator_type: 'MSPS',
+        // Opaque strings, returned exactly as stored (v3.1.0): the app must
+        // never parse the phone as a number.
+        phone: '+212 5 37 00 00 00',
+        address_line: '1 Avenue Mohammed V, Rabat',
       },
       {
         center_id: 121,
@@ -54,6 +59,9 @@ const db = {
         updated_at: new Date().toISOString(),
         is_active: true,
         commune_name: 'Agdal-Ryad',
+        operator_type: 'ONG',
+        phone: '+212 5 37 77 88 99',
+        address_line: '12 Rue Oued Fes, Agdal, Rabat',
       },
       {
         center_id: 122,
@@ -69,6 +77,29 @@ const db = {
         updated_at: new Date().toISOString(),
         is_active: true,
         commune_name: 'Salé',
+        operator_type: 'MSPS',
+        // Both unknown on purpose: exercises the app's null handling.
+        phone: null,
+        address_line: null,
+      },
+      {
+        center_id: 123,
+        geo_code: 'CEN-0123',
+        name: 'Centre associatif Casablanca - Exemple',
+        region_id: 2,
+        province_id: 20,
+        category_id: 3,
+        commune_id: 103,
+        network: 3,
+        latitude: 33.589886,
+        longitude: -7.603869,
+        updated_at: new Date().toISOString(),
+        is_active: true,
+        commune_name: 'Casablanca',
+        operator_type: 'ONG',
+        phone: '(+212) 5 22 45 67 89',
+        // Address known, phone format with parentheses: still opaque.
+        address_line: 'Boulevard Zerktouni, Casablanca',
       },
     ],
     referrals: [],
@@ -170,11 +201,16 @@ const db = {
         thematic_name: 'Hépatite B',
         title: 'Prévenir les hépatites virales',
         summary: 'Gestes de prévention et situations où demander conseil.',
-        content_type: 'INFOGRAPHIC',
+        content_type: 'TEXT',
         language: 'fr',
         is_highlighted: true,
-        body_markdown: null,
-        asset_url: 'https://placehold.co/800x600/1d9e75/ffffff.png',
+        body_markdown:
+          '# Prevenir les hepatites virales\n\n'
+          + 'Les hepatites B et C se transmettent surtout par le sang et les '
+          + 'rapports sexuels.\n\n'
+          + '- Le vaccin protege contre l hepatite B\n'
+          + '- Ne partagez jamais rasoirs, brosses a dents ou seringues\n',
+        asset_url: null,
         // Chemin relatif : rendu absolu au read time. Volontairement cassé —
         // il n'existe pas de route /media, ce qui valide le repli sur l'icône.
         thumbnail_url: '/media/content/3/thumbnail/missing.jpg',
@@ -256,14 +292,18 @@ const db = {
         thematic_name: 'Hépatite C',
         title: 'الوقاية من التهاب الكبد C',
         summary: 'كيف ينتقل الفيروس وكيف نحمي أنفسنا.',
-        content_type: 'INFOGRAPHIC',
+        content_type: 'TEXT',
         language: 'ar',
         // Le plus recent des contenus mis en avant, et le seul en arabe : sur
         // l'accueil il doit passer APRES les contenus francais quand l'app est
         // en francais, et en tete quand elle est en arabe.
         is_highlighted: true,
-        body_markdown: null,
-        asset_url: 'https://placehold.co/800x600/c1554a/ffffff.png',
+        body_markdown:
+          '# الوقاية من التهاب الكبد C\n\n'
+          + 'ينتقل الفيروس عبر الدم بالخصوص.\n\n'
+          + '- لا تتشارك الأدوات الشخصية\n'
+          + '- الفحص مجاني وسري\n',
+        asset_url: null,
         thumbnail_url: 'https://placehold.co/240x240/c1554a/ffffff.png',
         duration_seconds: null,
         source_name: 'MSPS',
@@ -271,30 +311,121 @@ const db = {
         published_at: '2026-08-28T09:00:00Z',
         status: 'PUBLISHED',
       },
+      // Awareness banners (contract v3.0.0). Real campaign art, 971x166, hosted
+      // on the project repository.
       {
-        content_id: 9,
+        content_id: 10,
         thematic_id: 4,
         thematic_name: 'General',
-        title: 'Journee nationale de depistage',
-        summary: 'Depistage gratuit et sans rendez-vous dans les centres participants.',
-        content_type: 'EVENT',
+        title: 'Campagne de sensibilisation Bla Smiya 1',
+        summary: 'Banniere de campagne.',
+        content_type: 'BANNER',
         language: 'fr',
+        // Banners are returned whatever their highlighting (v3.0.0); the flag
+        // stays false so they never leak into the "A la une" fixtures.
         is_highlighted: false,
-        // Same shape as a TEXT item: an event is a dated article, it carries a
-        // Markdown body and no media asset.
-        body_markdown:
-          '# Journee nationale de depistage\n\n'
-          + '**Date :** samedi 3 octobre 2026\n'
-          + '**Horaires :** de 9h a 17h\n\n'
-          + 'Le depistage est **gratuit** et sans rendez-vous.\n\n'
-          + '- Aucun document exige\n'
-          + '- Resultats confidentiels le jour meme\n',
-        asset_url: null,
+        body_markdown: null,
+        // Absolute, so mediaUrl() returns it verbatim. %20 is part of the
+        // URL as published: it must not be decoded.
+        asset_url: 'https://raw.githubusercontent.com/LynxDev9/MSPS/refs/heads/main/Banner/banniere%20app%20Bla%20Smiya-01.png',
+        // Contract: BANNER has no default thumbnail fallback.
         thumbnail_url: null,
         duration_seconds: null,
         source_name: 'MSPS',
-        source_reference: 'Programme national de depistage',
+        source_reference: 'Campagne Bla Smiya',
+        published_at: '2026-09-11T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 11,
+        thematic_id: 4,
+        thematic_name: 'General',
+        title: 'Campagne de sensibilisation Bla Smiya 2',
+        summary: 'Banniere de campagne.',
+        content_type: 'BANNER',
+        language: 'fr',
+        // Banners are returned whatever their highlighting (v3.0.0); the flag
+        // stays false so they never leak into the "A la une" fixtures.
+        is_highlighted: false,
+        body_markdown: null,
+        // Absolute, so mediaUrl() returns it verbatim. %20 is part of the
+        // URL as published: it must not be decoded.
+        asset_url: 'https://raw.githubusercontent.com/LynxDev9/MSPS/refs/heads/main/Banner/banniere%20app%20Bla%20Smiya-02.png',
+        // Contract: BANNER has no default thumbnail fallback.
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Campagne Bla Smiya',
         published_at: '2026-09-12T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 12,
+        thematic_id: 4,
+        thematic_name: 'General',
+        title: 'Campagne de sensibilisation Bla Smiya 3',
+        summary: 'Banniere de campagne.',
+        content_type: 'BANNER',
+        language: 'fr',
+        // Banners are returned whatever their highlighting (v3.0.0); the flag
+        // stays false so they never leak into the "A la une" fixtures.
+        is_highlighted: false,
+        body_markdown: null,
+        // Absolute, so mediaUrl() returns it verbatim. %20 is part of the
+        // URL as published: it must not be decoded.
+        asset_url: 'https://raw.githubusercontent.com/LynxDev9/MSPS/refs/heads/main/Banner/banniere%20app%20Bla%20Smiya-03.png',
+        // Contract: BANNER has no default thumbnail fallback.
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Campagne Bla Smiya',
+        published_at: '2026-09-13T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 13,
+        thematic_id: 4,
+        thematic_name: 'General',
+        title: 'Campagne de sensibilisation Bla Smiya 4',
+        summary: 'Banniere de campagne.',
+        content_type: 'BANNER',
+        language: 'fr',
+        // Banners are returned whatever their highlighting (v3.0.0); the flag
+        // stays false so they never leak into the "A la une" fixtures.
+        is_highlighted: false,
+        body_markdown: null,
+        // Absolute, so mediaUrl() returns it verbatim. %20 is part of the
+        // URL as published: it must not be decoded.
+        asset_url: 'https://raw.githubusercontent.com/LynxDev9/MSPS/refs/heads/main/Banner/banniere%20app%20Bla%20Smiya-04.png',
+        // Contract: BANNER has no default thumbnail fallback.
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Campagne Bla Smiya',
+        published_at: '2026-09-14T08:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 14,
+        thematic_id: 4,
+        thematic_name: 'General',
+        title: 'Campagne de sensibilisation Bla Smiya 5',
+        summary: 'Banniere de campagne.',
+        content_type: 'BANNER',
+        language: 'fr',
+        // Banners are returned whatever their highlighting (v3.0.0); the flag
+        // stays false so they never leak into the "A la une" fixtures.
+        is_highlighted: false,
+        body_markdown: null,
+        // Absolute, so mediaUrl() returns it verbatim. %20 is part of the
+        // URL as published: it must not be decoded.
+        asset_url: 'https://raw.githubusercontent.com/LynxDev9/MSPS/refs/heads/main/Banner/banniere%20app%20Bla%20Smiya-05.png',
+        // Contract: BANNER has no default thumbnail fallback.
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Campagne Bla Smiya',
+        published_at: '2026-09-15T08:00:00Z',
         status: 'PUBLISHED',
       },
       {
@@ -338,12 +469,11 @@ const VALID = {
     'pTrichomoniasis', 'pPubicLice', 'pScabies',
   ],
   // ⚠️ UPPERCASE CMS codes, unlike every other enum in this API.
-  //
-  // ⚠️ `EVENT` is ahead of the contract: v2.7.0 still declares
-  // [TEXT, INFOGRAPHIC, VIDEO, AUDIO]. It is seeded here so the app's
-  // Événements filter is testable now, but the real backend will answer 422
-  // until Sahi adds the value. See BlaSmia-app/CHECKLIST-reunion-2026-09-08.md.
-  content_type: ['TEXT', 'INFOGRAPHIC', 'VIDEO', 'AUDIO', 'EVENT'],
+  // Contract v3.0.0 replaced INFOGRAPHIC with BANNER: filtering on the old
+  // value now answers 422, like any other unknown code.
+  content_type: ['TEXT', 'BANNER', 'VIDEO', 'AUDIO'],
+  // Contract v3.0.0 — who operates a screening center. Required on Center.
+  operator_type: ['MSPS', 'ONG'],
   environment_type: ['r', 'u', 's', 'h'],
 };
 
@@ -355,6 +485,17 @@ for (const item of db.content.items) {
     throw new Error(`Seed error: duplicate content_id ${item.content_id}.`);
   }
   seenContentIds.add(item.content_id);
+}
+
+// operator_type is required on Center (v3.0.0). A seed row without it would
+// make the MSPS/ONG filter silently lose that center.
+for (const center of db.geo.centers) {
+  if (!VALID.operator_type.includes(center.operator_type)) {
+    throw new Error(
+      `Seed error: center ${center.center_id} has operator_type ` +
+      `'${center.operator_type}', expected MSPS or ONG.`,
+    );
+  }
 }
 
 // Eighteen camelCase codes are easy to mistype, and a typo would surface only
