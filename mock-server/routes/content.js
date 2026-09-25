@@ -55,7 +55,13 @@ function toDetail(req, row) {
 }
 
 function isMobileVisible(row) {
-  return row.status === 'PUBLISHED';
+  if (row.status !== 'PUBLISHED') return false;
+  // Contract v3.2.0: an EVENT needs both its Markdown and its cover image.
+  // Missing either hides it from the list and 404s its detail.
+  if (row.content_type === 'EVENT') {
+    return Boolean(row.body_markdown?.trim()) && Boolean(row.thumbnail_url);
+  }
+  return true;
 }
 
 // Parses an optional positive-integer query parameter.

@@ -428,6 +428,52 @@ const db = {
         published_at: '2026-09-15T08:00:00Z',
         status: 'PUBLISHED',
       },
+      // Event articles (contract v3.2.0). An EVENT is a TEXT-like article plus
+      // a REQUIRED cover image in thumbnail_url; asset_url and duration are
+      // always null. Modelled on the contract's own `event` detail example.
+      {
+        content_id: 15,
+        thematic_id: 4,
+        thematic_name: 'Général',
+        title: 'Journée nationale de dépistage',
+        summary: 'Une campagne gratuite de sensibilisation et de dépistage.',
+        content_type: 'EVENT',
+        language: 'fr',
+        is_highlighted: false,
+        body_markdown:
+          '# Journée nationale de dépistage\n\n'
+          + 'Une journée de dépistage sera organisée dans le centre régional.\n\n'
+          + '- Participation **gratuite** et confidentielle\n'
+          + '- Sans rendez-vous\n\n'
+          + '> Venez avec vos questions : des conseillers seront présents.\n',
+        asset_url: null,
+        thumbnail_url: 'https://placehold.co/960x540/d6336c/ffffff.png',
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Campagne nationale de dépistage',
+        published_at: '2026-09-21T12:00:00Z',
+        status: 'PUBLISHED',
+      },
+      {
+        content_id: 16,
+        thematic_id: 4,
+        thematic_name: 'Général',
+        title: 'Événement sans image',
+        summary: 'Publié mais sans couverture.',
+        content_type: 'EVENT',
+        language: 'fr',
+        is_highlighted: false,
+        body_markdown: 'Contenu valide, mais sans image de couverture.\n',
+        asset_url: null,
+        // No cover: the contract hides it from the list and answers 404 on
+        // its detail, even though it is PUBLISHED (see isMobileVisible).
+        thumbnail_url: null,
+        duration_seconds: null,
+        source_name: 'MSPS',
+        source_reference: 'Fixture de visibilité',
+        published_at: '2026-09-23T12:00:00Z',
+        status: 'PUBLISHED',
+      },
       {
         content_id: 6,
         thematic_id: 2,
@@ -470,8 +516,8 @@ const VALID = {
   ],
   // ⚠️ UPPERCASE CMS codes, unlike every other enum in this API.
   // Contract v3.0.0 replaced INFOGRAPHIC with BANNER: filtering on the old
-  // value now answers 422, like any other unknown code.
-  content_type: ['TEXT', 'BANNER', 'VIDEO', 'AUDIO'],
+  // value now answers 422, like any other unknown code. v3.2.0 adds EVENT.
+  content_type: ['TEXT', 'EVENT', 'BANNER', 'VIDEO', 'AUDIO'],
   // Contract v3.0.0 — who operates a screening center. Required on Center.
   operator_type: ['MSPS', 'ONG'],
   environment_type: ['r', 'u', 's', 'h'],
