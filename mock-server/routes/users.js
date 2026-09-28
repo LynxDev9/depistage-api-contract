@@ -1,24 +1,38 @@
 // routes/users.js
 
 const express = require('express');
-const { db, VALID, validate, validateArray, requireFields, error, requireBearer } = require('../db');
+const { db, VALID, validate, requireFields, error, requireBearer } = require('../db');
 
 const router = express.Router();
+
+// Contract v3.3.0 / v3.4.0: `user_type` and `family_situation` belong to the
+// server, which derives them from a completed auto-evaluation. A client that
+// sends either is refused instead of silently ignored.
+//
+// Stricter than the contract on purpose: the real server may simply drop the
+// fields, but a 422 here makes any regression in the app fail loudly.
+function serverOwnedFieldError(body) {
+  for (const field of ['user_type', 'family_situation']) {
+    if (body[field] !== undefined) {
+      return `Field '${field}' is server-owned and must not be sent.`;
+    }
+  }
+  return null;
+}
 
 // POST /users — register device
 router.post('/', (req, res) => {
   const body = req.body;
 
-  const missing = requireFields(body, ['device_uuid', 'user_type', 'age_range', 'gender', 'language']);
+  const missing = requireFields(body, ['device_uuid', 'age_range', 'gender', 'language']);
   if (missing) return error(res, 422, 'VALIDATION_ERROR', missing);
 
-  const invalidUserType = validateArray(body.user_type, VALID.user_type, 'user_type');
-  if (invalidUserType) return error(res, 422, 'VALIDATION_ERROR', invalidUserType);
+  const serverOwned = serverOwnedFieldError(body);
+  if (serverOwned) return error(res, 422, 'VALIDATION_ERROR', serverOwned);
 
   const invalid = validate(body, {
     age_range: VALID.age_range,
     gender: VALID.gender,
-    family_situation: VALID.family_situation,
     language: VALID.language,
   });
   if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
@@ -32,10 +46,11 @@ router.post('/', (req, res) => {
 
   const user = {
     device_uuid: body.device_uuid,
-    user_type: body.user_type,
+    // Empty until a completed auto-evaluation assigns a classification.
+    user_type: [],
     age_range: body.age_range,
     gender: body.gender,
-    family_situation: body.family_situation ?? null,
+    family_situation: null,
     language: body.language,
     is_pregnant: body.is_pregnant ?? null,
     fcm_token: body.fcm_token ?? null,
@@ -69,15 +84,12 @@ router.patch('/:device_uuid', requireBearer, (req, res) => {
   const user = db.users.find(u => u.device_uuid === req.params.device_uuid);
   if (!user) return error(res, 404, 'NOT_FOUND', 'No user found for this device_uuid.');
 
-  if (req.body.user_type !== undefined) {
-    const invalidUserType = validateArray(req.body.user_type, VALID.user_type, 'user_type');
-    if (invalidUserType) return error(res, 422, 'VALIDATION_ERROR', invalidUserType);
-  }
+  const serverOwned = serverOwnedFieldError(req.body);
+  if (serverOwned) return error(res, 422, 'VALIDATION_ERROR', serverOwned);
 
   const invalid = validate(req.body, {
     age_range: VALID.age_range,
     gender: VALID.gender,
-    family_situation: VALID.family_situation,
     language: VALID.language,
   });
   if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
@@ -88,7 +100,7 @@ router.patch('/:device_uuid', requireBearer, (req, res) => {
     return error(res, 422, 'VALIDATION_ERROR', "Field 'is_pregnant' must be null unless gender is 'female'.");
   }
 
-  const allowed = ['user_type', 'age_range', 'gender', 'family_situation', 'language', 'is_pregnant', 'fcm_token'];
+  const allowed = ['age_range', 'gender', 'language', 'is_pregnant', 'fcm_token'];
   allowed.forEach(field => {
     if (req.body[field] !== undefined) user[field] = req.body[field];
   });

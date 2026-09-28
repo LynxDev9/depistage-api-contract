@@ -1,8 +1,17 @@
 // db.js — Shared database and validation utilities
 
+const assessmentSeed = require('./assessmentSeed');
+
 const db = {
   users: [],
   sessions: [],
+  // Auto-evaluation (contract v3.4.0). `quiz` is the internal configuration,
+  // weights and classifications included — see assessmentSeed.js. `results`
+  // are the completed attempts, each owned by the device that submitted it.
+  assessment: {
+    quiz: assessmentSeed.quiz,
+    results: [],
+  },
   // access_token -> { device_uuid, session_id, expires_at (epoch ms) }
   tokens: {},
   geo: {
@@ -71,7 +80,8 @@ const db = {
         province_id: 11,
         category_id: 3,
         commune_id: 102,
-        network: 1,
+        // v3.4.0: `network` is optional and nullable — null when none is assigned.
+        network: null,
         latitude: 34.036300,
         longitude: -6.798400,
         updated_at: new Date().toISOString(),
@@ -531,6 +541,30 @@ for (const item of db.content.items) {
     throw new Error(`Seed error: duplicate content_id ${item.content_id}.`);
   }
   seenContentIds.add(item.content_id);
+}
+
+// The published questionnaire must be self-consistent, or the assessment routes
+// would answer confusingly rather than fail loudly at boot.
+{
+  const quiz = db.assessment.quiz;
+  const ids = new Set([quiz.quiz_id]);
+  const remember = (value, what) => {
+    if (ids.has(value)) throw new Error(`Seed error: duplicate assessment id ${value} (${what}).`);
+    ids.add(value);
+  };
+  for (const question of quiz.questions) {
+    remember(question.question_id, 'question');
+    if (question.options.length < 2) {
+      throw new Error(`Seed error: question ${question.question_id} needs at least 2 options.`);
+    }
+    for (const option of question.options) remember(option.option_id, 'option');
+  }
+  const levels = quiz.bands.map(b => b.level);
+  for (const level of ['LOW', 'MEDIUM', 'HIGH']) {
+    if (!levels.includes(level) || !quiz.orientation[level]) {
+      throw new Error(`Seed error: assessment band ${level} is missing its threshold or orientation.`);
+    }
+  }
 }
 
 // operator_type is required on Center (v3.0.0). A seed row without it would

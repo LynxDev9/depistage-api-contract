@@ -1,4 +1,4 @@
-// mock-server/server.js — MSPS Dépistage API v2.4.0 (English snake_case)
+// mock-server/server.js — MSPS Dépistage API (English snake_case)
 
 const express = require('express');
 const { db } = require('./db');
@@ -6,6 +6,7 @@ const usersRouter = require('./routes/users');
 const sessionsRouter = require('./routes/sessions');
 const geoRouter = require('./routes/geo');
 const contentRouter = require('./routes/content');
+const assessmentRouter = require('./routes/assessment');
 
 const app = express();
 const BASE_PORT = Number(process.env.PORT || 4010);
@@ -14,7 +15,7 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v2.5.1)
+// Routes (see api-contract.yaml v3.4.0)
 //
 // Not implemented here: /events, /partner-links, PUT /content/{id}/rating, and
 // the /media gateway that serves the files behind asset_url. The app does not
@@ -25,6 +26,7 @@ app.use('/users', usersRouter);
 app.use('/sessions', sessionsRouter);
 app.use('/geo', geoRouter);
 app.use('/content', contentRouter);
+app.use('/assessment', assessmentRouter);
 
 // ---------------------------------------------------------------------------
 // Debug route — see current db state
