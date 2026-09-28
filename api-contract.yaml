@@ -3,13 +3,28 @@ info:
   title: App API
   description: |
 
-    **v3.2.0 - Event article content**
+    **v3.4.0 - Anonymous risk auto-evaluation and profile classification ownership**
 
-    Adds `EVENT` as a published article-based content type. EVENT carries non-empty Markdown in
-    `body_markdown`, has no primary `asset_url`, and requires one eligible READY event image exposed
-    through `thumbnail_url`. EVENT uses the existing public content list/detail endpoints and is
-    filtered with `content_type=EVENT`. For analytics, EVENT consultations use the existing
-    `content_viewed` convention with channel `text`; no new analytics channel is introduced.
+    Adds authenticated anonymous-device auto-evaluation endpoints:
+    `GET /assessment/quiz` and `POST /assessment/results`.
+
+    The server calculates the assessment result and derives the profile classification from the
+    published questionnaire configuration.
+
+    `family_situation` is no longer client-supplied in `POST /users` or
+    `PATCH /users/{device_uuid}`; it is server-owned and updated after a successful
+    auto-evaluation, like `user_type`.
+
+    The assessment API does not expose question weights, option score values, risk thresholds,
+    system classification values, device identity, or `total_score`.
+
+    **v3.3.0 - Device profile classification is no longer client-supplied (breaking change)**
+
+    Removes `user_type` from `POST /users` and `PATCH /users/{device_uuid}` request bodies.
+    A device profile can be created before any auto-evaluation. The server stores an empty
+    classification array, and `DeviceProfileResponse.user_type` remains visible as that array
+    until the auto-evaluation module assigns one or more classifications. Enum values are unchanged.
+    Clients must not send `user_type`.
 
     **v3.1.0 - Public center contact details**
 
@@ -160,7 +175,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.2.0
+  version: 3.4.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -181,6 +196,11 @@ tags:
     Foreground session-lease tracking and anonymous mobile JWT issuance.
     `POST /sessions` starts an independent foreground lease and returns a short-lived bearer token.
     Successful `PATCH /sessions/{id}` heartbeats return replacement credentials for the same lease.
+- name: Assessment
+  description: |
+    Anonymous authenticated self-assessment questionnaire and server-calculated risk orientation.
+    The API exposes only the published questionnaire and completed result presentation data.
+    Scoring weights, option scores, thresholds, system values, and respondent history remain internal.
 - name: Geolocation (CMS)
   description: |
     Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -219,7 +239,6 @@ paths:
               $ref: '#/components/schemas/CreateDeviceProfileRequest'
             example:
               device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-              user_type: ["youth", "key_population"]
               age_range: "18_25"
               gender: "male"
               language: "fr"
@@ -233,9 +252,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["youth"]
+                user_type: []
                 age_range: "18_25"
                 gender: "male"
+                family_situation:
                 language: "fr"
                 is_pregnant:
                 fcm_token: "fcm_token_example_abc123"
@@ -259,7 +279,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "VALIDATION_ERROR"
-                message: "Invalid value for field 'user_type'."
+                message: "Invalid value for field 'age_range'."
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -282,9 +302,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["youth"]
+                user_type: []
                 age_range: "18_25"
                 gender: "male"
+                family_situation:
                 language: "fr"
                 is_pregnant:
                 fcm_token: "fcm_token_example_abc123"
@@ -311,7 +332,8 @@ paths:
       tags: [DeviceProfiles]
       summary: Update user profile
       description: |
-        Update mutable fields — language, fcm_token, user_type, etc.
+        Update mutable profile fields such as language and fcm_token. `user_type` and
+        `family_situation` are server-owned and are not client-editable.
 
         Requires `MobileAnonymousBearer`. The path `device_uuid` must match the JWT `device_uuid` claim. A token for another device returns `403 FORBIDDEN`.
       parameters:
@@ -334,9 +356,10 @@ paths:
                 $ref: '#/components/schemas/DeviceProfileResponse'
               example:
                 device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                user_type: ["youth"]
+                user_type: []
                 age_range: "18_25"
                 gender: "male"
+                family_situation:
                 language: "ar"
                 is_pregnant:
                 fcm_token: "new_fcm_token_xyz789"
@@ -927,6 +950,8 @@ paths:
         CRUD table in app schema. Requires anonymous mobile bearer token from `POST /sessions`.
 
         The request body `device_uuid` must match the JWT `device_uuid` claim. The server uses the JWT device as the authoritative owner of the created referral.
+
+        When `source` is `quiz`, `quiz_result_id` is required and must reference an assessment result owned by that same JWT device. For every other source, `quiz_result_id` must be null or omitted. An unknown result, or a result owned by another device, returns `404` and does not reveal whether another device owns it. `source` `quiz` with no result, or a non-quiz source with a result, returns `422`.
       security:
       - MobileAnonymousBearer: []
       requestBody:
@@ -959,8 +984,22 @@ paths:
           $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '404':
+          description: |
+            Returned when `source` is `quiz` and `quiz_result_id` does not reference an assessment
+            result owned by the authenticated device. The response does not reveal whether another
+            device owns the supplied result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Assessment result not found."
         '422':
-          description: Validation error
+          description: |
+            Validation error. Inconsistent source and result combinations return `422`, including
+            `source` `quiz` with no result and a non-quiz source with a result.
           content:
             application/json:
               schema:
@@ -1015,6 +1054,8 @@ paths:
         Requires anonymous mobile bearer token from `POST /sessions`.
 
         The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
+
+        If the resulting `source` is `quiz`, a `quiz_result_id` owned by that same device is required. If the resulting `source` is not `quiz`, `quiz_result_id` must be null, and changing away from `quiz` clears the stored result association. An unknown result, or a result owned by another device, returns `404` without revealing the other device. Invalid source/result combinations return `422`. Referral ownership itself remains the JWT device.
       security:
       - MobileAnonymousBearer: []
       requestBody:
@@ -1043,15 +1084,24 @@ paths:
         '401':
           $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
-          description: Referral not found
+          description: |
+            Referral not found, or the referral belongs to another device.
+            Also returned when the resulting source is `quiz` and `quiz_result_id` does not
+            reference an assessment result owned by the authenticated device. The response does
+            not reveal whether another device owns the supplied result.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NOT_FOUND"
+                message: "Referral not found."
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '422':
-          description: Validation error
+          description: |
+            Validation error. Invalid source/result combinations return `422`, including a quiz
+            source with no result and a non-quiz source with a result.
           content:
             application/json:
               schema:
@@ -1101,7 +1151,7 @@ paths:
         Canonical Content consultation convention:
         - Use `event_name: content_viewed` and `module: content`; there is no ContentView endpoint.
         - Send the consulted integer `content_id`, its `language`, and channel mapping
-          `TEXT -> text`, `EVENT -> text`, `BANNER -> banner`, `AUDIO -> audio`, `VIDEO -> video`.
+          `TEXT -> text`, `BANNER -> banner`, `AUDIO -> audio`, `VIDEO -> video`.
         - Emit at most one `content_viewed` event per consultation when the consultation ends.
           Do not emit `content_viewed` periodically as a heartbeat.
         - Put elapsed consultation seconds in `metadata.duration_sec` as a non-negative integer.
@@ -1200,8 +1250,6 @@ paths:
         - Only `PUBLISHED` content is returned.
         - `DRAFT`, `READY_FOR_REVIEW`, and `ARCHIVED` content is hidden.
         - `TEXT` content may be returned without a media asset.
-        - `EVENT` content is returned only when it has valid non-empty Markdown and an eligible READY
-          event image exposed through `thumbnail_url`.
         - `VIDEO`, `AUDIO`, and `BANNER` content is returned only when it has an eligible READY public media asset; the server generates the public URL at read time.
         - Internal storage and processing fields are never exposed.
 
@@ -1326,7 +1374,6 @@ paths:
         Visibility rules:
         - Return `404` when content does not exist.
         - Return `404` when content exists but is not `PUBLISHED`.
-        - Return `404` when EVENT content lacks valid non-empty Markdown or an eligible READY event image.
         - Return `404` when media content exists but has no eligible READY public media asset.
         - Do not reveal whether unpublished or internal content exists.
 
@@ -1572,6 +1619,97 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /assessment/quiz:
+    get:
+      tags: [Assessment]
+      summary: Get the published auto-evaluation questionnaire
+      description: |
+        Returns the single published linear questionnaire in the authenticated device profile language.
+
+        Requires MobileAnonymousBearer and an active persisted AppSession.
+
+        The server uses the authenticated device profile language (`fr` or `ar`).
+        Clients cannot override language through a query parameter.
+
+        Returns 404 when no questionnaire is currently published.
+
+        Scoring and classification metadata are never exposed.
+      security:
+        - MobileAnonymousBearer: []
+      responses:
+        '200':
+          description: Published questionnaire in deterministic presentation order
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentQuizResponse'
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '404':
+          description: No published questionnaire is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: NOT_FOUND
+                message: No published assessment is available.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /assessment/results:
+    post:
+      tags: [Assessment]
+      summary: Complete the published auto-evaluation questionnaire
+      description: |
+        Completes the currently published auto-evaluation for the authenticated anonymous device.
+
+        The server derives device identity from MobileAnonymousBearer, validates that exactly one valid
+        option was submitted for every published question, calculates the weighted score, selects the
+        configured risk band, persists the completed attempt, and updates server-owned profile
+        classification atomically.
+
+        The request must not contain device_uuid, score, risk_level, total_score, weights, thresholds,
+        or system classification values.
+      security:
+        - MobileAnonymousBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAssessmentResultRequest'
+      responses:
+        '201':
+          description: Completed assessment result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentResultResponse'
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '404':
+          description: The quiz is not the current published questionnaire
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: The submitted answer set is incomplete or inconsistent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: Submit exactly one valid option for every assessment question.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
 components:
 
@@ -1690,11 +1828,12 @@ components:
       items:
         type: string
         enum: [youth, key_population, migrant, general_public]
-      minItems: 1
       description: |
-        Array of user type classifications (use gender for identifying women).
-        Send multiple values as a JSON array, e.g. `["youth", "migrant"]`.
-        Property name is `user_type` (singular), not `user_types`.
+        User classification derived by the auto-evaluation module. Phase 44 auto-evaluation is
+        single-choice for USER_TYPE, so a successful completion stores a one-element array.
+        The array is empty until a successful auto-evaluation has assigned a value. Allowed
+        values remain `youth`, `key_population`, `migrant`, and `general_public`. Property name
+        is `user_type` (singular), not `user_types`. Clients never submit this field.
 
     AgeRange:
       type: string
@@ -1714,7 +1853,10 @@ components:
     FamilySituation:
       type: string
       enum: [married, single, prefer_not_to_say]
-      description: Self-declared family situation. `prefer_not_to_say` is a first-class value.
+      description: |
+        Family-situation classification derived by the auto-evaluation module.
+        `prefer_not_to_say` is a first-class classification value.
+        The field is server-owned and must not be supplied through profile create/update requests.
 
     Language:
       type: string
@@ -1733,9 +1875,9 @@ components:
       enum: [text, banner, infographic, audio, video, chatbot, notification]
       description: |
         Optional analytics channel for how the user consumed or received the event subject.
-        Content events use `text` for both `TEXT` and `EVENT`, `banner` for `BANNER`, `audio`
-        for `AUDIO`, and `video` for `VIDEO`. `infographic` is deprecated but remains accepted
-        for historical data and older mobile clients; reporting groups it with `banner`.
+        Content events typically use `text`, `banner`, `audio`, or `video` to match
+        `ContentType` in lowercase. `infographic` is deprecated but remains accepted for
+        historical data and older mobile clients; reporting groups it with `banner`.
 
     AppEventModule:
       type: string
@@ -1759,8 +1901,8 @@ components:
       enum: [TEXT, EVENT, BANNER, VIDEO, AUDIO]
       description: |
         Published educational-content format. `TEXT` and `EVENT` carry Markdown in
-        `body_markdown`; EVENT additionally requires one eligible READY event image as its cover.
-        EVENT returns that image in `thumbnail_url` and returns null in `asset_url`.
+        `body_markdown`; EVENT additionally requires one effective READY custom thumbnail as
+        its cover. EVENT returns that cover in `thumbnail_url` and returns null in `asset_url`.
         `BANNER` and `AUDIO` deliver a ready asset URL. `VIDEO` delivers an HLS playlist URL in
         `asset_url`, not the original MP4.
 
@@ -1771,23 +1913,18 @@ components:
       description: |
         Client-supplied anonymous device profile. `device_uuid` is generated by the mobile app
         and becomes the durable owner key for this device. The server stores it; it does not
-        assign a different identifier.
-      required: [device_uuid, user_type, age_range, gender, language]
+        assign a different identifier. `user_type` and `family_situation` are server-owned and
+        are not part of this request.
+      required: [device_uuid, age_range, gender, language]
       properties:
         device_uuid:
           type: string
           format: uuid
           description: Client-generated anonymous device identifier. Example `3fa85f64-5717-4562-b3fc-2c963f66afa6`.
-        user_type:
-          $ref: '#/components/schemas/UserType'
         age_range:
           $ref: '#/components/schemas/AgeRange'
         gender:
           $ref: '#/components/schemas/Gender'
-        family_situation:
-          $ref: '#/components/schemas/FamilySituation'
-          nullable: true
-          description: Optional. Omit or send null when the user does not declare a family situation.
         language:
           $ref: '#/components/schemas/Language'
         is_pregnant:
@@ -1801,16 +1938,14 @@ components:
 
     UpdateDeviceProfileRequest:
       type: object
-      description: All fields are optional. Send only what needs to be updated.
+      description: |
+        All fields are optional. Send only what needs to be updated. `user_type` and
+        `family_situation` are server-owned and are not part of this request.
       properties:
-        user_type:
-          $ref: '#/components/schemas/UserType'
         age_range:
           $ref: '#/components/schemas/AgeRange'
         gender:
           $ref: '#/components/schemas/Gender'
-        family_situation:
-          $ref: '#/components/schemas/FamilySituation'
         language:
           $ref: '#/components/schemas/Language'
         is_pregnant:
@@ -1825,8 +1960,8 @@ components:
     DeviceProfileResponse:
       type: object
       description: |
-        Anonymous device profile. Returned only to the authenticated anonymous JWT whose
-        `device_uuid` matches this profile.
+        Anonymous device profile. Profile reads return it only to the authenticated anonymous JWT
+        whose `device_uuid` matches this profile; registration also returns the newly created profile.
       properties:
         device_uuid:
           type: string
@@ -1834,13 +1969,22 @@ components:
           description: Server-echoed anonymous device identifier originally supplied by the client.
         user_type:
           $ref: '#/components/schemas/UserType'
+          description: |
+            Server-derived user classification. Phase 44 auto-evaluation is single-choice, so a
+            successful completion stores a one-element array. The array is empty before any
+            successful auto-evaluation. Clients never submit this field.
         age_range:
           $ref: '#/components/schemas/AgeRange'
         gender:
           $ref: '#/components/schemas/Gender'
         family_situation:
-          $ref: '#/components/schemas/FamilySituation'
+          allOf:
+            - $ref: '#/components/schemas/FamilySituation'
           nullable: true
+          description: |
+            Server-derived family situation from the latest successfully completed auto-evaluation.
+            Null until the auto-evaluation module has assigned a value.
+            Clients do not send this field.
         language:
           $ref: '#/components/schemas/Language'
         is_pregnant:
@@ -1855,6 +1999,126 @@ components:
           type: string
           format: date-time
           description: Server-generated UTC creation timestamp (ISO-8601).
+
+    # ── Assessment ─────────────────────────────────────────
+
+    AssessmentRiskLevel:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+      description: Overall server-calculated risk band.
+
+    AssessmentAnswerOptionResponse:
+      type: object
+      additionalProperties: false
+      required: [option_id, label]
+      properties:
+        option_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    AssessmentQuestionResponse:
+      type: object
+      additionalProperties: false
+      required: [question_id, text, options]
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        options:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/AssessmentAnswerOptionResponse'
+
+    AssessmentQuizResponse:
+      type: object
+      additionalProperties: false
+      required: [quiz_id, version, title, questions]
+      properties:
+        quiz_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        questions:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AssessmentQuestionResponse'
+
+    SubmitAssessmentAnswer:
+      type: object
+      additionalProperties: false
+      required: [question_id, option_id]
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        option_id:
+          type: string
+          format: uuid
+
+    SubmitAssessmentResultRequest:
+      type: object
+      additionalProperties: false
+      required: [quiz_id, answers]
+      properties:
+        quiz_id:
+          type: string
+          format: uuid
+        answers:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SubmitAssessmentAnswer'
+
+    AssessmentResultResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - result_id
+        - quiz_id
+        - quiz_version
+        - risk_level
+        - orientation
+        - recommend_center
+        - completed_at
+      properties:
+        result_id:
+          type: string
+          format: uuid
+        quiz_id:
+          type: string
+          format: uuid
+        quiz_version:
+          type: integer
+          minimum: 1
+        risk_level:
+          $ref: '#/components/schemas/AssessmentRiskLevel'
+        orientation:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        recommend_center:
+          type: boolean
+        completed_at:
+          type: string
+          format: date-time
 
     # ── Content ────────────────────────────────────────────
 
@@ -1965,7 +2229,7 @@ components:
           nullable: true
           description: |
             Absolute public thumbnail URL selected at read time. EVENT requires the newest eligible
-            READY event image as its cover. For other types, custom thumbnails override the
+            READY custom thumbnail as its cover. For other types, custom thumbnails override the
             existing generated/default fallbacks: VIDEO has no default, AUDIO has the standard audio
             fallback, TEXT has the standard text fallback, and BANNER has no default. Treat the URL
             as opaque. It may return `404` when the object is unavailable or the parent is no longer
@@ -1974,8 +2238,8 @@ components:
           type: integer
           nullable: true
           description: |
-            Media duration in whole seconds when known. Null for TEXT and EVENT, and for media
-            items whose duration has not been recorded. Never a fractional value.
+            Media duration in whole seconds when known. Null for TEXT and for items whose
+            duration has not been recorded. Never a fractional value.
         published_at:
           type: string
           format: date-time
@@ -2051,7 +2315,7 @@ components:
           nullable: true
           description: |
             Absolute public thumbnail URL selected at read time. EVENT requires the newest eligible
-            READY event image as its cover. For other types, custom thumbnails override the
+            READY custom thumbnail as its cover. For other types, custom thumbnails override the
             existing generated/default fallbacks: VIDEO has no default, AUDIO has the standard audio
             fallback, TEXT has the standard text fallback, and BANNER has no default. Treat the URL
             as opaque. It may return `404` when the object is unavailable or the parent is no longer
@@ -2060,8 +2324,8 @@ components:
           type: integer
           nullable: true
           description: |
-            Media duration in whole seconds when known. Null for TEXT and EVENT, and for media
-            items whose duration has not been recorded.
+            Media duration in whole seconds when known. Null for TEXT and for items whose
+            duration has not been recorded.
         source_name:
           type: string
           description: Editorial source label shown to the user (for example the originating program).
@@ -2246,7 +2510,7 @@ components:
 
     Center:
       type: object
-      required: [center_id, name, region_id, province_id, category_id, network, is_active, operator_type]
+      required: [center_id, name, region_id, province_id, category_id, is_active, operator_type]
       properties:
         center_id:
           type: integer
@@ -2277,8 +2541,10 @@ components:
           type: integer
           minimum: 1
           maximum: 4
+          nullable: true
           description: |
-            Center network code from 1 to 4. The value is a catalog identifier, not a count.
+            Optional center network code from 1 to 4. The value is a catalog identifier, not a count.
+            Null when no network is assigned.
         latitude:
           type: number
           format: double
@@ -2343,7 +2609,12 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Optional quiz result that produced this referral. Null when the source is not `quiz`.
+          description: |
+            Required when source is `quiz`.
+            Must reference an assessment result owned by the authenticated JWT device.
+            Must be null or omitted for every non-quiz source.
+            An unknown result or a result owned by another device returns 404.
+            The response does not reveal whether another device owns the supplied result.
         source:
           $ref: '#/components/schemas/CenterReferralSource'
         followed_up:
@@ -2353,13 +2624,24 @@ components:
 
     UpdateCenterReferralRequest:
       type: object
-      description: All fields are optional. Send only what needs to be updated.
+      description: |
+        All fields are optional. Send only what needs to be updated.
+        If the resulting source is `quiz`, a valid owned `quiz_result_id` is required.
+        If the resulting source is not `quiz`, `quiz_result_id` must be null.
+        Changing away from `quiz` clears the existing result association.
+        Referral ownership remains the authenticated JWT device.
       properties:
         quiz_result_id:
           type: string
           format: uuid
           nullable: true
-          description: Optional quiz result identifier. Send null to clear it.
+          description: |
+            Required when the resulting source is `quiz`, and must reference an assessment result
+            owned by the authenticated JWT device. Must be null when the resulting source is not
+            `quiz`; changing away from `quiz` clears the existing result association.
+            An unknown result or a result owned by another device returns 404.
+            Invalid source/result combinations return 422.
+            The response does not reveal whether another device owns the supplied result.
         source:
           $ref: '#/components/schemas/CenterReferralSource'
         followed_up:
@@ -2387,7 +2669,9 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Quiz result that produced this referral, or null.
+          description: |
+            Assessment result that produced this referral when source is `quiz`; otherwise null.
+            The referenced result belongs to this referral's authenticated device.
         source:
           $ref: '#/components/schemas/CenterReferralSource'
         followed_up:
@@ -2590,13 +2874,31 @@ x-mobile-schema-field-index:
   schemas:
     CreateDeviceProfileRequest:
       schema: '#/components/schemas/CreateDeviceProfileRequest'
-      fields: [device_uuid, user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token]
+      fields: [device_uuid, age_range, gender, language, is_pregnant, fcm_token]
     UpdateDeviceProfileRequest:
       schema: '#/components/schemas/UpdateDeviceProfileRequest'
-      fields: [user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token]
+      fields: [age_range, gender, language, is_pregnant, fcm_token]
     DeviceProfileResponse:
       schema: '#/components/schemas/DeviceProfileResponse'
       fields: [device_uuid, user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token, created_at]
+    AssessmentAnswerOptionResponse:
+      schema: '#/components/schemas/AssessmentAnswerOptionResponse'
+      fields: [option_id, label]
+    AssessmentQuestionResponse:
+      schema: '#/components/schemas/AssessmentQuestionResponse'
+      fields: [question_id, text, options]
+    AssessmentQuizResponse:
+      schema: '#/components/schemas/AssessmentQuizResponse'
+      fields: [quiz_id, version, title, questions]
+    SubmitAssessmentAnswer:
+      schema: '#/components/schemas/SubmitAssessmentAnswer'
+      fields: [question_id, option_id]
+    SubmitAssessmentResultRequest:
+      schema: '#/components/schemas/SubmitAssessmentResultRequest'
+      fields: [quiz_id, answers]
+    AssessmentResultResponse:
+      schema: '#/components/schemas/AssessmentResultResponse'
+      fields: [result_id, quiz_id, quiz_version, risk_level, orientation, recommend_center, completed_at]
     CreateSessionRequest:
       schema: '#/components/schemas/CreateSessionRequest'
       fields: [device_uuid, platform, app_version]
