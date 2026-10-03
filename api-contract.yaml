@@ -1404,6 +1404,8 @@ paths:
         - `EVENT` also has a required cover in `thumbnail_url` and null `asset_url`.
         - BANNER, VIDEO, and AUDIO detail return `body_markdown: null`.
         - `body_markdown` is not part of `ContentListItem`; clients obtain it from detail.
+        - `body_markdown` marks every safe link with angle brackets so the mobile parser can detect it. An explicit link keeps its label, for example `[Ministère](<https://example.ma>)`. A bare absolute `http://` or `https://` URL is returned as an autolink, for example `<https://example.ma>`. The mobile client must treat both angle-bracket forms as links. Display them red, underlined, and clickable. Tapping a link opens that HTTP or HTTPS destination with the application's approved external or in-app browser. Do not treat other schemes, including `javascript:`, `data:`, and `file:`, as links. Presentation color is a client responsibility and is not encoded in the stored Markdown.
+        - `source_name` and `source_reference` are always present and may be null when the editor did not supply a source.
         - Source documents remain internal.
 
         Because this endpoint documents `429`, the implementation must include
@@ -1458,6 +1460,23 @@ paths:
                     source_name: "MSPS"
                     source_reference: "Campagne nationale de dépistage"
                     published_at: "2026-09-21T12:00:00Z"
+                text_without_source:
+                  value:
+                    content_id: 61
+                    thematic_id: 1
+                    thematic_name: "VIH"
+                    title: "Où trouver une information fiable"
+                    summary: "Les liens officiels restent accessibles dans le texte."
+                    content_type: "TEXT"
+                    language: "fr"
+                    is_highlighted: false
+                    body_markdown: "Pour plus d'informations :\n\n[Ministère](<https://example.ma>)\n\n<https://example.ma/page>"
+                    asset_url:
+                    thumbnail_url: "https://media.example.msps.test/media/defaults/text.png"
+                    duration_seconds:
+                    source_name:
+                    source_reference:
+                    published_at: "2026-09-28T09:00:00Z"
         '404':
           description: Content not found
           content:
@@ -2299,6 +2318,13 @@ components:
             Supported formatting is limited to headings, paragraphs, bold, italic, ordered and
             unordered lists, links, and blockquotes. Raw HTML, scripts, iframes, custom CSS,
             embedded JavaScript, Markdown images, and embedded document layout are not supported.
+
+            Safe links are returned with angle brackets so a mobile Markdown parser can detect them.
+            An explicit link keeps its label, for example `[Ministère](<https://example.ma>)`. A bare
+            absolute `http://` or `https://` URL is returned as `<https://example.ma>`. Render both forms
+            as red, underlined, clickable links and open only those HTTP or HTTPS destinations with the
+            approved external or in-app browser. Other schemes are not links. Link color and underline
+            are presentation rules for the client; they are not encoded in this field.
         asset_url:
           type: string
           format: uri
@@ -2328,10 +2354,16 @@ components:
             duration has not been recorded.
         source_name:
           type: string
-          description: Editorial source label shown to the user (for example the originating program).
+          nullable: true
+          description: |
+            Editorial source label shown to the user (for example the originating program).
+            Always serialized. Null when the editor did not supply a source.
         source_reference:
           type: string
-          description: Editorial source reference (document, campaign, or citation identifier).
+          nullable: true
+          description: |
+            Editorial source reference (document, campaign, or citation identifier).
+            Always serialized. Null when the editor did not supply a reference.
         published_at:
           type: string
           format: date-time
