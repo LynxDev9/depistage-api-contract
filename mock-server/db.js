@@ -101,8 +101,11 @@ const db = {
         category_id: 3,
         commune_id: 103,
         network: 3,
-        latitude: 33.589886,
-        longitude: -7.603869,
+        // Position unknown (contract: latitude/longitude are nullable — some ONG
+        // centers are recorded without one). The address is known, so the app
+        // can still offer a map search by address.
+        latitude: null,
+        longitude: null,
         updated_at: new Date().toISOString(),
         is_active: true,
         commune_name: 'Casablanca',
@@ -110,6 +113,26 @@ const db = {
         phone: '(+212) 5 22 45 67 89',
         // Address known, phone format with parentheses: still opaque.
         address_line: 'Boulevard Zerktouni, Casablanca',
+      },
+      {
+        center_id: 124,
+        geo_code: 'CEN-0124',
+        name: 'Association de proximité Casablanca - Exemple',
+        region_id: 2,
+        province_id: 20,
+        category_id: 3,
+        commune_id: 103,
+        network: 3,
+        // Nothing to locate it by: no coordinates and no address. The app must
+        // keep the row and say the position is unavailable.
+        latitude: null,
+        longitude: null,
+        updated_at: new Date().toISOString(),
+        is_active: true,
+        commune_name: 'Casablanca',
+        operator_type: 'ONG',
+        phone: '+212 6 61 00 11 22',
+        address_line: null,
       },
     ],
     referrals: [],
