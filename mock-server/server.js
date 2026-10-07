@@ -7,6 +7,7 @@ const sessionsRouter = require('./routes/sessions');
 const geoRouter = require('./routes/geo');
 const contentRouter = require('./routes/content');
 const assessmentRouter = require('./routes/assessment');
+const chatbotRouter = require('./routes/chatbot');
 
 const app = express();
 const BASE_PORT = Number(process.env.PORT || 4010);
@@ -15,7 +16,7 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v3.4.0)
+// Routes (see api-contract.yaml v3.5.0)
 //
 // Not implemented here: /events, /partner-links, PUT /content/{id}/rating, and
 // the /media gateway that serves the files behind asset_url. The app does not
@@ -27,6 +28,7 @@ app.use('/sessions', sessionsRouter);
 app.use('/geo', geoRouter);
 app.use('/content', contentRouter);
 app.use('/assessment', assessmentRouter);
+app.use('/chatbot', chatbotRouter);
 
 // ---------------------------------------------------------------------------
 // Debug route — see current db state

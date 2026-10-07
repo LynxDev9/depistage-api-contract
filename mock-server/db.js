@@ -1,6 +1,7 @@
 // db.js — Shared database and validation utilities
 
 const assessmentSeed = require('./assessmentSeed');
+const chatbotSeed = require('./chatbotSeed');
 
 const db = {
   users: [],
@@ -11,6 +12,11 @@ const db = {
   assessment: {
     quiz: assessmentSeed.quiz,
     results: [],
+  },
+  // Scripted chatbot (contract v3.5.0): the single scenario, internal fields
+  // included — see chatbotSeed.js.
+  chatbot: {
+    scenario: chatbotSeed.scenario,
   },
   // access_token -> { device_uuid, session_id, expires_at (epoch ms) }
   tokens: {},
@@ -586,6 +592,36 @@ for (const item of db.content.items) {
   for (const level of ['LOW', 'MEDIUM', 'HIGH']) {
     if (!levels.includes(level) || !quiz.orientation[level]) {
       throw new Error(`Seed error: assessment band ${level} is missing its threshold or orientation.`);
+    }
+  }
+}
+
+// The published chatbot must be self-consistent, or GET /chatbot would answer
+// with a tree the app cannot walk.
+{
+  const { scenario } = db.chatbot;
+  const stepIds = new Set();
+  const choiceIds = new Set();
+  for (const step of scenario.steps) {
+    if (stepIds.has(step.step_id)) throw new Error(`Seed error: duplicate chatbot step ${step.step_id}.`);
+    stepIds.add(step.step_id);
+    if (step.step_type === 'action' && (!step.action_type || step.choices.length > 0)) {
+      throw new Error(`Seed error: chatbot action step ${step.step_id} needs an action_type and no choices.`);
+    }
+    if (step.step_type === 'message' && (step.action_type !== null || step.message === null)) {
+      throw new Error(`Seed error: chatbot message step ${step.step_id} needs text and no action_type.`);
+    }
+    for (const c of step.choices) {
+      if (choiceIds.has(c.choice_id)) throw new Error(`Seed error: duplicate chatbot choice ${c.choice_id}.`);
+      choiceIds.add(c.choice_id);
+    }
+  }
+  if (!stepIds.has(scenario.start_step_id)) throw new Error('Seed error: chatbot start step is missing.');
+  for (const step of scenario.steps) {
+    for (const c of step.choices) {
+      if (!stepIds.has(c.next_step_id)) {
+        throw new Error(`Seed error: chatbot choice ${c.choice_id} points to a missing step.`);
+      }
     }
   }
 }
