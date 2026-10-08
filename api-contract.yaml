@@ -3,6 +3,19 @@ info:
   title: App API
   description: |
 
+    **v3.6.0 - Global app feedback and rating**
+
+    Additive. Adds authenticated `GET /feedback`, `PUT /feedback` and `DELETE /feedback` so the
+    mobile app can read, create or replace, and withdraw the authenticated device's single current
+    feedback about the whole application: a 1 to 5 star `rating` and an optional plain-text
+    `comment` (at most 1000 characters). There is one current feedback per device, like an
+    app-store review; a later `PUT` replaces it and no history is kept.
+
+    Device identity comes only from `MobileAnonymousBearer`. The platform and app version shown to
+    administrators are copied by the server from the authenticated session; the client does not
+    send them. The feature has no contact field and no analytics event: when to ask the user for
+    feedback is decided by the mobile app.
+
     **v3.5.0 - Scripted chatbot tree + chatbot analytics convention**
 
     Additive; formalizes the previously reserved chatbot analytics module before chatbot rollout.
@@ -190,7 +203,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.5.0
+  version: 3.6.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -221,6 +234,11 @@ tags:
     Scripted bilingual decision-tree chatbot (FAQ-style guidance and orientation). The API exposes
     only the published tree in the device language; navigation happens locally in the mobile app
     and usage is reported through `POST /events` with `module: chatbot`.
+- name: Feedback
+  description: |
+    Anonymous feedback about the whole application: one current 1 to 5 star rating with an optional
+    comment per authenticated device. Read only by MSPS staff in AdminWeb; never returned to other
+    devices.
 - name: Geolocation (CMS)
   description: |
     Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -1866,6 +1884,129 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /feedback:
+    get:
+      tags: [Feedback]
+      summary: Get the current device feedback about the app
+      description: |
+        Returns the authenticated anonymous device's current feedback about the whole application.
+        Device identity is derived only from `MobileAnonymousBearer`; no device identifier is
+        accepted from the request.
+
+        If the device has never given feedback, or has withdrawn it, the API returns `200` with
+        `rating`, `comment` and `updated_at` all `null`. Another device's feedback is never returned.
+      security:
+      - MobileAnonymousBearer: []
+      responses:
+        '200':
+          description: Current feedback state for the authenticated anonymous device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppFeedbackCurrentResponse'
+              examples:
+                given:
+                  summary: The device has already given feedback
+                  value:
+                    rating: 4
+                    comment: "Application claire, j'ai trouvé un centre près de chez moi."
+                    updated_at: "2026-10-08T10:15:00+00:00"
+                not_given:
+                  summary: The device has not given feedback yet
+                  value:
+                    rating:
+                    comment:
+                    updated_at:
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+    put:
+      tags: [Feedback]
+      summary: Create or replace the current device feedback about the app
+      description: |
+        Sets the authenticated anonymous device's current feedback about the whole application.
+        The owner is the authenticated JWT device; the body must not include a device identifier.
+
+        There is one current feedback per device. The first `PUT` creates it; a later `PUT`
+        replaces `rating` and `comment` on the same feedback. No history is kept. Sending the same
+        `rating` and `comment` again changes nothing, including `updated_at`.
+
+        `comment` is optional. Leading and trailing white space is removed; an empty or
+        white-space-only comment is stored as `null`. Send `comment: null` (or omit it) to remove a
+        previous comment while keeping the rating.
+
+        The server records the platform and app version of the authenticated session with every
+        create or change, for MSPS staff only. They are not part of this request or response.
+      security:
+      - MobileAnonymousBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetAppFeedbackRequest'
+            example:
+              rating: 4
+              comment: "Application claire, j'ai trouvé un centre près de chez moi."
+      responses:
+        '200':
+          description: Current feedback stored for the authenticated anonymous device
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppFeedbackResponse'
+              example:
+                rating: 4
+                comment: "Application claire, j'ai trouvé un centre près de chez moi."
+                updated_at: "2026-10-08T10:15:00+00:00"
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          description: Feedback validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                rating:
+                  summary: Rating outside 1 to 5
+                  value:
+                    error: "VALIDATION_ERROR"
+                    message: "rating must be between 1 and 5."
+                comment:
+                  summary: Comment too long
+                  value:
+                    error: "VALIDATION_ERROR"
+                    message: "comment must be at most 1000 characters."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+    delete:
+      tags: [Feedback]
+      summary: Withdraw the current device feedback about the app
+      description: |
+        Permanently removes the authenticated anonymous device's current feedback (rating and
+        comment). The operation is idempotent: it returns `204` whether or not feedback existed.
+        After it, `GET /feedback` returns the "not given" state and the feedback no longer counts
+        in AdminWeb statistics.
+      security:
+      - MobileAnonymousBearer: []
+      responses:
+        '204':
+          description: Feedback removed, or there was none
+        '401':
+          $ref: '#/components/responses/ProtectedMobileUnauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
 
   securitySchemes:
@@ -3108,6 +3249,78 @@ components:
             $ref: '#/components/schemas/ChatbotStep'
           description: Steps reachable from `start_step_id`, in no meaningful order.
 
+    SetAppFeedbackRequest:
+      type: object
+      description: |
+        Client-supplied current feedback about the whole application. The owner is the
+        authenticated JWT `device_uuid`; the body must not include a device identifier, platform or
+        app version.
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          description: Integer star rating from 1 (lowest) to 5 (highest). Half-stars and 0 are not accepted.
+          example: 4
+        comment:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: |
+            Optional plain-text comment. Trimmed by the server; the 1000-character limit applies after
+            trimming. Empty or white-space-only text is stored as `null`. Do not put contact details
+            or personal health information in it: the app should say so next to the field.
+          example: "Application claire, j'ai trouvé un centre près de chez moi."
+
+    AppFeedbackCurrentResponse:
+      type: object
+      required: [rating, comment, updated_at]
+      description: |
+        Current feedback state for the authenticated anonymous device. All three fields are `null`
+        when this device has no current feedback.
+      properties:
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          nullable: true
+          description: The caller's current rating, or null when there is no current feedback.
+        comment:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: The caller's current comment, or null when there is none.
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current feedback was created or last changed, or null when there is none.
+
+    AppFeedbackResponse:
+      type: object
+      description: Confirmed current feedback after a successful PUT.
+      required: [rating, comment, updated_at]
+      properties:
+        rating:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          description: The stored current rating for this authenticated device.
+          example: 4
+        comment:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: The stored comment after trimming, or null.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the feedback was created or last changed. Unchanged by an identical PUT.
+
     ErrorResponse:
       type: object
       description: |
@@ -3230,6 +3443,15 @@ x-mobile-schema-field-index:
     ChatbotResponse:
       schema: '#/components/schemas/ChatbotResponse'
       fields: [scenario_id, title, start_step_id, steps]
+    SetAppFeedbackRequest:
+      schema: '#/components/schemas/SetAppFeedbackRequest'
+      fields: [rating, comment]
+    AppFeedbackCurrentResponse:
+      schema: '#/components/schemas/AppFeedbackCurrentResponse'
+      fields: [rating, comment, updated_at]
+    AppFeedbackResponse:
+      schema: '#/components/schemas/AppFeedbackResponse'
+      fields: [rating, comment, updated_at]
     ErrorResponse:
       schema: '#/components/schemas/ErrorResponse'
       fields: [error, message]
