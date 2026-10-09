@@ -2,6 +2,7 @@
 
 const assessmentSeed = require('./assessmentSeed');
 const chatbotSeed = require('./chatbotSeed');
+const notificationsSeed = require('./notificationsSeed');
 
 const db = {
   users: [],
@@ -18,6 +19,12 @@ const db = {
   chatbot: {
     scenario: chatbotSeed.scenario,
   },
+  // Global app feedback (contract v3.6.0): one current row per device.
+  // `platform` / `app_version` are copied from the session, for staff only.
+  feedback: [],
+  // In-app notifications (contract v3.7.0); `status` is internal — see
+  // notificationsSeed.js.
+  notifications: notificationsSeed.notifications,
   // access_token -> { device_uuid, session_id, expires_at (epoch ms) }
   tokens: {},
   geo: {
@@ -622,6 +629,25 @@ for (const item of db.content.items) {
       if (!stepIds.has(c.next_step_id)) {
         throw new Error(`Seed error: chatbot choice ${c.choice_id} points to a missing step.`);
       }
+    }
+  }
+}
+
+// The notifications seed must respect the contract's shape, or the app would
+// receive rows it is entitled to reject.
+{
+  const ids = new Set();
+  for (const n of db.notifications) {
+    if (ids.has(n.notification_id)) throw new Error(`Seed error: duplicate notification ${n.notification_id}.`);
+    ids.add(n.notification_id);
+    if (n.content_id !== null && n.center_id !== null) {
+      throw new Error(`Seed error: notification ${n.notification_id} links both a content and a centre.`);
+    }
+    if (!n.title || n.title.length > 100 || !n.body || n.body.length > 500) {
+      throw new Error(`Seed error: notification ${n.notification_id} title/body length.`);
+    }
+    if (!['REMINDER', 'AWARENESS', 'INFO'].includes(n.type)) {
+      throw new Error(`Seed error: notification ${n.notification_id} has an unknown type.`);
     }
   }
 }

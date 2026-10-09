@@ -8,6 +8,8 @@ const geoRouter = require('./routes/geo');
 const contentRouter = require('./routes/content');
 const assessmentRouter = require('./routes/assessment');
 const chatbotRouter = require('./routes/chatbot');
+const feedbackRouter = require('./routes/feedback');
+const notificationsRouter = require('./routes/notifications');
 
 const app = express();
 const BASE_PORT = Number(process.env.PORT || 4010);
@@ -16,10 +18,10 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v3.5.0)
+// Routes (see api-contract.yaml v3.7.0)
 //
-// Not implemented here: /events, /partner-links, PUT /content/{id}/rating, and
-// the /media gateway that serves the files behind asset_url. The app does not
+// Not implemented here: /events, /partner-links, and the
+// /media gateway that serves the files behind asset_url. The app does not
 // consume them yet; add them when that work starts.
 // ---------------------------------------------------------------------------
 
@@ -29,6 +31,17 @@ app.use('/geo', geoRouter);
 app.use('/content', contentRouter);
 app.use('/assessment', assessmentRouter);
 app.use('/chatbot', chatbotRouter);
+app.use('/feedback', feedbackRouter);
+app.use('/notifications', notificationsRouter);
+
+// A body over express.json's limit answers with the contract's 413 envelope
+// instead of Express's default HTML page.
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large.' });
+  }
+  return next(err);
+});
 
 // ---------------------------------------------------------------------------
 // Debug route — see current db state
