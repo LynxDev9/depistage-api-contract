@@ -3,6 +3,20 @@ info:
   title: App API
   description: |
 
+    **v3.7.0 - In-app notifications**
+
+    Additive. Adds public `GET /notifications?language=fr|ar`, which returns the in-app messages
+    that MSPS staff have published in AdminWeb and that are active now in the requested language,
+    newest first, 20 at most. A message has a `type` (`REMINDER`, `AWARENESS`, `INFO`), a plain-text
+    `title` and `body`, and at most one optional link to a content item (`content_id`) or a
+    centre (`center_id`).
+
+    Notifications are in-app only: nothing is pushed to devices. The mobile app fetches the list
+    when it opens and keeps the read/unread state on the phone; the server stores nothing per
+    device. Opens are reported through `POST /events` with `module: notification`.
+    `fcm_token` on device profiles is now documented as reserved and unused; it is still accepted
+    and returned unchanged, so no client change is required.
+
     **v3.6.0 - Global app feedback and rating**
 
     Additive. Adds authenticated `GET /feedback`, `PUT /feedback` and `DELETE /feedback` so the
@@ -203,7 +217,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.6.0
+  version: 3.7.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -239,6 +253,10 @@ tags:
     Anonymous feedback about the whole application: one current 1 to 5 star rating with an optional
     comment per authenticated device. Read only by MSPS staff in AdminWeb; never returned to other
     devices.
+- name: Notifications
+  description: |
+    In-app messages written by MSPS staff in AdminWeb (`cms.Notification`). Read-only public list
+    of the messages active now in one language. No push notification is sent.
 - name: Geolocation (CMS)
   description: |
     Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -2007,6 +2025,88 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List the active in-app notifications in one language
+      description: |
+        Returns the in-app messages that MSPS staff have published in AdminWeb and that are active
+        now in the requested language. This read is public and does not require
+        `MobileAnonymousBearer`. Nothing is pushed: the mobile app calls this endpoint when it opens
+        (and may call it again when it returns to the foreground).
+
+        Visibility rules:
+        - Only `PUBLISHED` notifications are returned; `DRAFT` and `ARCHIVED` ones are hidden.
+        - A notification is active when `starts_at` is now or earlier and `ends_at` is null or later
+          than now.
+        - Only notifications whose `language` equals the `language` query value are returned.
+
+        Order and size: `starts_at` descending, then `notification_id` descending; at most 20 items.
+        An empty array means there is nothing to show.
+
+        Read state and analytics:
+        - The server stores nothing per device. The mobile app keeps which `notification_id` it has
+          already shown or opened, and may compare `updated_at` to detect an edited message.
+        - When the user opens a notification, report it with `POST /events` using
+          `event_name: notification_opened`, `module: notification`, `channel: notification`,
+          `language`, and `metadata.notification_id`. This convention is not validated by the server.
+
+        Links: `content_id` and `center_id` are both optional and at most one is set. They are
+        returned as stored. If the linked content or centre is no longer visible, its own read
+        endpoint answers `404`; the app then shows the message without the link.
+
+        Because this endpoint documents `429`, the implementation must include the established
+        `ContentReads` rate-limit policy.
+      parameters:
+      - name: language
+        in: query
+        required: true
+        schema:
+          $ref: '#/components/schemas/Language'
+        description: Language of the notifications to return. Required; no default.
+      responses:
+        '200':
+          description: Active notifications in the requested language
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 20
+                items:
+                  $ref: '#/components/schemas/Notification'
+              example:
+              - notification_id: 12
+                type: "AWARENESS"
+                title: "Journée mondiale de lutte contre le sida"
+                body: "Le dépistage est gratuit et anonyme dans les centres participants ce 1er décembre."
+                language: "fr"
+                content_id: 44
+                center_id:
+                starts_at: "2026-11-25T08:00:00Z"
+                ends_at: "2026-12-02T00:00:00Z"
+                updated_at: "2026-11-20T14:30:00Z"
+              - notification_id: 9
+                type: "INFO"
+                title: "Nouveau centre à Rabat"
+                body: "Un nouveau centre de dépistage est ouvert à Rabat."
+                language: "fr"
+                content_id:
+                center_id: 128
+                starts_at: "2026-11-10T09:00:00Z"
+                ends_at:
+                updated_at: "2026-11-10T09:00:00Z"
+        '422':
+          description: Missing or invalid `language`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "VALIDATION_ERROR"
+                message: "language is required and must be fr or ar."
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
 
   securitySchemes:
@@ -2234,7 +2334,9 @@ components:
         fcm_token:
           type: string
           nullable: true
-          description: Optional Firebase Cloud Messaging registration token. Null when push is not configured.
+          description: |
+            Reserved and unused: notifications are in-app only and the server never sends push
+            messages. Still accepted and stored for compatibility; send null or omit it.
 
     UpdateDeviceProfileRequest:
       type: object
@@ -2255,7 +2357,9 @@ components:
         fcm_token:
           type: string
           nullable: true
-          description: Optional Firebase Cloud Messaging registration token. Send null to clear it.
+          description: |
+            Reserved and unused: notifications are in-app only and the server never sends push
+            messages. Still accepted and stored for compatibility; send null to clear it.
 
     DeviceProfileResponse:
       type: object
@@ -2294,7 +2398,7 @@ components:
         fcm_token:
           type: string
           nullable: true
-          description: Current FCM token if one is stored; otherwise null.
+          description: Reserved and unused (no push notifications). Echoes the stored value, or null.
         created_at:
           type: string
           format: date-time
@@ -2904,7 +3008,7 @@ components:
       enum: [map, quiz, chatbot, notification]
       description: |
         How the user reached the referral. `map` is the geo map, `quiz` is a quiz result,
-        `chatbot` is a chatbot suggestion, and `notification` is a push or in-app notice.
+        `chatbot` is a chatbot suggestion, and `notification` is an in-app notification (`GET /notifications`).
         A referral is created only when a concrete center is selected; the chatbot actions
         `open_centers` and `open_self_assessment` never create one by themselves.
 
@@ -3321,6 +3425,63 @@ components:
           format: date-time
           description: When the feedback was created or last changed. Unchanged by an identical PUT.
 
+    Notification:
+      type: object
+      description: |
+        In-app message written by MSPS staff and active now. Plain text only; render `title` and
+        `body` as text, not Markdown or HTML.
+      required: [notification_id, type, title, body, language, content_id, center_id, starts_at, ends_at, updated_at]
+      properties:
+        notification_id:
+          type: integer
+          format: int32
+          description: Stable identifier. Use it to remember on the phone which messages were read.
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Plain-text title.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Plain-text message. May contain line breaks.
+        language:
+          $ref: '#/components/schemas/Language'
+        content_id:
+          type: integer
+          format: int32
+          nullable: true
+          description: Optional linked content item, opened with `GET /content/{content_id}`. Null when not linked or when `center_id` is set.
+        center_id:
+          type: integer
+          format: int32
+          nullable: true
+          description: Optional linked centre, opened with `GET /geo/centers/{center_id}`. Null when not linked or when `content_id` is set.
+        starts_at:
+          type: string
+          format: date-time
+          description: When the message became visible.
+        ends_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the message stops being visible, or null when it has no end.
+        updated_at:
+          type: string
+          format: date-time
+          description: When staff last changed the message. Changes when an already published message is edited.
+
+    NotificationType:
+      type: string
+      enum: [REMINDER, AWARENESS, INFO]
+      description: |
+        Purpose of the message, for display (icon or label). `REMINDER` recalls an action such as
+        getting tested, `AWARENESS` relays a campaign or a health day, `INFO` is practical
+        information such as a new centre or opening hours.
+
     ErrorResponse:
       type: object
       description: |
@@ -3452,6 +3613,9 @@ x-mobile-schema-field-index:
     AppFeedbackResponse:
       schema: '#/components/schemas/AppFeedbackResponse'
       fields: [rating, comment, updated_at]
+    Notification:
+      schema: '#/components/schemas/Notification'
+      fields: [notification_id, type, title, body, language, content_id, center_id, starts_at, ends_at, updated_at]
     ErrorResponse:
       schema: '#/components/schemas/ErrorResponse'
       fields: [error, message]
