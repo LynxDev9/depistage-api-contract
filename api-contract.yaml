@@ -6,10 +6,9 @@ info:
     **v3.7.0 - In-app notifications**
 
     Additive. Adds public `GET /notifications?language=fr|ar`, which returns the in-app messages
-    that MSPS staff have published in AdminWeb and that are active now in the requested language,
-    newest first, 20 at most. A message has a `type` (`REMINDER`, `AWARENESS`, `INFO`), a plain-text
-    `title` and `body`, and at most one optional link to a content item (`content_id`) or a
-    centre (`center_id`).
+    that MSPS staff have published in AdminWeb in the requested language, most recently published
+    first, 20 at most. A message has a `type` (`REMINDER`, `AWARENESS`, `INFO`), a plain-text
+    `title` and `body`, and an optional link to a published content item (`content_id`).
 
     Notifications are in-app only: nothing is pushed to devices. The mobile app fetches the list
     when it opens and keeps the read/unread state on the phone; the server stores nothing per
@@ -256,7 +255,7 @@ tags:
 - name: Notifications
   description: |
     In-app messages written by MSPS staff in AdminWeb (`cms.Notification`). Read-only public list
-    of the messages active now in one language. No push notification is sent.
+    of the published messages in one language. No push notification is sent.
 - name: Geolocation (CMS)
   description: |
     Read-only geographic referentials (`cms` schema). Responses use English snake_case JSON
@@ -2028,20 +2027,21 @@ paths:
   /notifications:
     get:
       tags: [Notifications]
-      summary: List the active in-app notifications in one language
+      summary: List the published in-app notifications in one language
       description: |
-        Returns the in-app messages that MSPS staff have published in AdminWeb and that are active
-        now in the requested language. This read is public and does not require
+        Returns the in-app messages that MSPS staff have published in AdminWeb in the requested
+        language. This read is public and does not require
         `MobileAnonymousBearer`. Nothing is pushed: the mobile app calls this endpoint when it opens
         (and may call it again when it returns to the foreground).
 
         Visibility rules:
         - Only `PUBLISHED` notifications are returned; `DRAFT` and `ARCHIVED` ones are hidden.
-        - A notification is active when `starts_at` is now or earlier and `ends_at` is null or later
-          than now.
+          A notification is visible from its publication until staff archive it; there are no
+          start or end dates.
         - Only notifications whose `language` equals the `language` query value are returned.
 
-        Order and size: `starts_at` descending, then `notification_id` descending; at most 20 items.
+        Order and size: most recently published first, then `notification_id` descending; at most
+        20 items.
         An empty array means there is nothing to show.
 
         Read state and analytics:
@@ -2051,9 +2051,9 @@ paths:
           `event_name: notification_opened`, `module: notification`, `channel: notification`,
           `language`, and `metadata.notification_id`. This convention is not validated by the server.
 
-        Links: `content_id` and `center_id` are both optional and at most one is set. They are
-        returned as stored. If the linked content or centre is no longer visible, its own read
-        endpoint answers `404`; the app then shows the message without the link.
+        Link: `content_id` is optional and returned as stored. If the linked content is no longer
+        visible, `GET /content/{content_id}` answers `404`; the app then shows the message without
+        the link.
 
         Because this endpoint documents `429`, the implementation must include the established
         `ContentReads` rate-limit policy.
@@ -2081,9 +2081,6 @@ paths:
                 body: "Le dépistage est gratuit et anonyme dans les centres participants ce 1er décembre."
                 language: "fr"
                 content_id: 44
-                center_id:
-                starts_at: "2026-11-25T08:00:00Z"
-                ends_at: "2026-12-02T00:00:00Z"
                 updated_at: "2026-11-20T14:30:00Z"
               - notification_id: 9
                 type: "INFO"
@@ -2091,9 +2088,6 @@ paths:
                 body: "Un nouveau centre de dépistage est ouvert à Rabat."
                 language: "fr"
                 content_id:
-                center_id: 128
-                starts_at: "2026-11-10T09:00:00Z"
-                ends_at:
                 updated_at: "2026-11-10T09:00:00Z"
         '422':
           description: Missing or invalid `language`
@@ -3428,9 +3422,9 @@ components:
     Notification:
       type: object
       description: |
-        In-app message written by MSPS staff and active now. Plain text only; render `title` and
+        In-app message written by MSPS staff and currently published. Plain text only; render `title` and
         `body` as text, not Markdown or HTML.
-      required: [notification_id, type, title, body, language, content_id, center_id, starts_at, ends_at, updated_at]
+      required: [notification_id, type, title, body, language, content_id, updated_at]
       properties:
         notification_id:
           type: integer
@@ -3454,21 +3448,7 @@ components:
           type: integer
           format: int32
           nullable: true
-          description: Optional linked content item, opened with `GET /content/{content_id}`. Null when not linked or when `center_id` is set.
-        center_id:
-          type: integer
-          format: int32
-          nullable: true
-          description: Optional linked centre, opened with `GET /geo/centers/{center_id}`. Null when not linked or when `content_id` is set.
-        starts_at:
-          type: string
-          format: date-time
-          description: When the message became visible.
-        ends_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: When the message stops being visible, or null when it has no end.
+          description: Optional linked content item, opened with `GET /content/{content_id}`. Null when not linked.
         updated_at:
           type: string
           format: date-time
@@ -3615,7 +3595,7 @@ x-mobile-schema-field-index:
       fields: [rating, comment, updated_at]
     Notification:
       schema: '#/components/schemas/Notification'
-      fields: [notification_id, type, title, body, language, content_id, center_id, starts_at, ends_at, updated_at]
+      fields: [notification_id, type, title, body, language, content_id, updated_at]
     ErrorResponse:
       schema: '#/components/schemas/ErrorResponse'
       fields: [error, message]
