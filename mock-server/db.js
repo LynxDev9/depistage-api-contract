@@ -640,8 +640,8 @@ for (const item of db.content.items) {
   for (const n of db.notifications) {
     if (ids.has(n.notification_id)) throw new Error(`Seed error: duplicate notification ${n.notification_id}.`);
     ids.add(n.notification_id);
-    if (n.content_id !== null && n.center_id !== null) {
-      throw new Error(`Seed error: notification ${n.notification_id} links both a content and a centre.`);
+    if (Number.isNaN(Date.parse(n.published_at)) || Number.isNaN(Date.parse(n.updated_at))) {
+      throw new Error(`Seed error: notification ${n.notification_id} needs published_at and updated_at.`);
     }
     if (!n.title || n.title.length > 100 || !n.body || n.body.length > 500) {
       throw new Error(`Seed error: notification ${n.notification_id} title/body length.`);
