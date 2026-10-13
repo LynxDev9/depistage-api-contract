@@ -3,6 +3,13 @@ info:
   title: App API
   description: |
 
+    **v3.7.1 - Notification publication date**
+
+    Additive. Each item of `GET /notifications` now has `published_at`: when staff first published
+    the message. It does not change when a published message is edited, so the app shows it as the
+    message date. `updated_at` is unchanged and still tells the app that a message was edited.
+    Notifications have no `starts_at`, `ends_at` or `center_id`.
+
     **v3.7.0 - In-app notifications**
 
     Additive. Adds public `GET /notifications?language=fr|ar`, which returns the in-app messages
@@ -216,7 +223,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.7.0
+  version: 3.7.1
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -2040,7 +2047,7 @@ paths:
           start or end dates.
         - Only notifications whose `language` equals the `language` query value are returned.
 
-        Order and size: most recently published first, then `notification_id` descending; at most
+        Order and size: most recently published first (`published_at`), then `notification_id` descending; at most
         20 items.
         An empty array means there is nothing to show.
 
@@ -2081,6 +2088,7 @@ paths:
                 body: "Le dépistage est gratuit et anonyme dans les centres participants ce 1er décembre."
                 language: "fr"
                 content_id: 44
+                published_at: "2026-11-20T09:00:00Z"
                 updated_at: "2026-11-20T14:30:00Z"
               - notification_id: 9
                 type: "INFO"
@@ -2088,6 +2096,7 @@ paths:
                 body: "Un nouveau centre de dépistage est ouvert à Rabat."
                 language: "fr"
                 content_id:
+                published_at: "2026-11-10T09:00:00Z"
                 updated_at: "2026-11-10T09:00:00Z"
         '422':
           description: Missing or invalid `language`
@@ -3424,7 +3433,7 @@ components:
       description: |
         In-app message written by MSPS staff and currently published. Plain text only; render `title` and
         `body` as text, not Markdown or HTML.
-      required: [notification_id, type, title, body, language, content_id, updated_at]
+      required: [notification_id, type, title, body, language, content_id, published_at, updated_at]
       properties:
         notification_id:
           type: integer
@@ -3449,10 +3458,18 @@ components:
           format: int32
           nullable: true
           description: Optional linked content item, opened with `GET /content/{content_id}`. Null when not linked.
+        published_at:
+          type: string
+          format: date-time
+          description: |
+            When staff first published the message. Show it as the message date. It does not change
+            when a published message is edited, and the list is ordered by it (newest first).
         updated_at:
           type: string
           format: date-time
-          description: When staff last changed the message. Changes when an already published message is edited.
+          description: |
+            When staff last changed the message. Changes when an already published message is edited;
+            use it to detect an edit, not as the display date.
 
     NotificationType:
       type: string
@@ -3595,7 +3612,7 @@ x-mobile-schema-field-index:
       fields: [rating, comment, updated_at]
     Notification:
       schema: '#/components/schemas/Notification'
-      fields: [notification_id, type, title, body, language, content_id, updated_at]
+      fields: [notification_id, type, title, body, language, content_id, published_at, updated_at]
     ErrorResponse:
       schema: '#/components/schemas/ErrorResponse'
       fields: [error, message]
