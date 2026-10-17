@@ -3,6 +3,28 @@ info:
   title: App API
   description: |
 
+    **v3.8.0 - Dashboard analytics events**
+
+    Breaking for clients that send `content_viewed` or `notification_opened` loosely; additive
+    otherwise. The app is not live yet, so no deployed client is affected.
+
+    `POST /events` now validates the five events the AdminWeb analytics dashboard counts, and
+    refuses with `422 VALIDATION_ERROR` an event the dashboard could not use, instead of storing it
+    and counting it as zero:
+    - `content_viewed` (now strict): `module: content`, `content_id`, `language`, a content
+      `channel`, and metadata with only `duration_sec` and an optional `completed`. EVENT articles
+      use `channel: text`. Any other metadata key (for example `section`) is refused.
+    - `notification_opened` (now strict, was documented but not checked): `module: notification`,
+      `channel: notification`, `language`, and metadata with only `notification_id`.
+    - `self_assessment_started` (new): sent when the user starts the self-assessment.
+    - `center_search_performed` (new): sent once when the user leaves the centre finder, only if
+      they typed, filtered, tapped "près de moi" or opened a centre.
+    - `center_map_redirected` (new): sent when the user opens a centre's location in Google Maps.
+
+    Other event names stay free, as before. `center_id`, `region_id` and `province_id`, when sent
+    on any event, must exist: an unknown id now returns `422` (it used to fail with `500`).
+    No response shape changes.
+
     **v3.7.1 - Notification publication date**
 
     Additive. Each item of `GET /notifications` now has `published_at`: when staff first published
@@ -223,7 +245,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.7.1
+  version: 3.8.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -1224,16 +1246,47 @@ paths:
         self-assessment events, chatbot events, notification opens, surveys,
         and referral-related analytics.
 
-        Canonical Content consultation convention:
-        - Use `event_name: content_viewed` and `module: content`; there is no ContentView endpoint.
-        - Send the consulted integer `content_id`, its `language`, and channel mapping
-          `TEXT -> text`, `BANNER -> banner`, `AUDIO -> audio`, `VIDEO -> video`.
+        Dashboard events. The AdminWeb analytics dashboard counts the five events below. The server
+        checks each one exactly as described and answers `422 VALIDATION_ERROR` when a rule is not
+        met, so an event the dashboard cannot use is never stored. Optional fields not listed
+        (`region_id`, `province_id`, ...) are allowed. Other event names are free.
+
+        `content_viewed`: one content consultation; there is no ContentView endpoint.
+        - `module: content`, the consulted `content_id`, the content `language`, and `channel`
+          mapped from the content type: `TEXT -> text`, `EVENT -> text`, `BANNER -> banner`,
+          `AUDIO -> audio`, `VIDEO -> video`. (`infographic` is still accepted, like `banner`.)
         - Emit at most one `content_viewed` event per consultation when the consultation ends.
           Do not emit `content_viewed` periodically as a heartbeat.
-        - Put elapsed consultation seconds in `metadata.duration_sec` as a non-negative integer.
-        - Include the client-observed boolean `metadata.completed` only when the client can
-          meaningfully determine completion. It is especially useful for VIDEO and AUDIO; TEXT
-          and BANNER may omit it when no deterministic completion rule exists.
+        - `metadata.duration_sec` (required): elapsed consultation seconds, integer, 0 or more.
+        - `metadata.completed` (optional boolean): only when the client can determine completion.
+          It is especially useful for VIDEO and AUDIO; TEXT and BANNER may omit it.
+        - No other metadata key.
+
+        `notification_opened`: the user opened an in-app notification.
+        - `module: notification`, `channel: notification`, the notification `language`, and
+          `metadata.notification_id` (integer, 1 or more) from `GET /notifications`. No other key.
+
+        `self_assessment_started`: the user started the self-assessment (first question shown).
+        - `module: self_assessment`, no `channel`, the app `language`, and `metadata.quiz_id`
+          (UUID) from `GET /assessment/quiz`. No other key.
+        - Sent once per attempt. Completion is already recorded by `POST /assessment/results`, so
+          there is no `self_assessment_completed` event.
+
+        `center_search_performed`: the user searched for a screening centre.
+        - Sent once, when the user leaves the centre finder, and only if during that visit they
+          typed a search text, applied a filter (region, province, category, operator), tapped
+          "près de moi", or opened a centre's detail sheet. Opening the finder and leaving sends
+          nothing.
+        - `module: geo`, no `channel`.
+        - `metadata` has exactly the four booleans `used_text`, `used_filter`, `used_nearby` and
+          `opened_center`, at least one of them `true`. No other key.
+        - Optional `region_id` / `province_id`: the last region or province filter applied.
+
+        `center_map_redirected`: the user opened a centre's location in Google Maps.
+        - `module: geo`, no `channel`, the `center_id` of the centre. `metadata` omitted, null or `{}`.
+
+        `center_id`, `region_id` and `province_id`, on any event, must exist; an unknown id returns
+        `422 VALIDATION_ERROR` (`Invalid value for field 'center_id'.`).
 
         Chatbot convention (`module: chatbot`, `channel` omitted or null):
         - `event_name` is one of `chatbot_started`, `chatbot_step_viewed`,
@@ -1298,9 +1351,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "VALIDATION_ERROR"
-                message: "Invalid value for field 'channel'."
+              examples:
+                field:
+                  value:
+                    error: "VALIDATION_ERROR"
+                    message: "Invalid value for field 'channel'."
+                convention:
+                  value:
+                    error: "VALIDATION_ERROR"
+                    message: "center_map_redirected events must use module 'geo', no channel, a center_id, and no metadata."
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '403':
@@ -2056,7 +2115,8 @@ paths:
           already shown or opened, and may compare `updated_at` to detect an edited message.
         - When the user opens a notification, report it with `POST /events` using
           `event_name: notification_opened`, `module: notification`, `channel: notification`,
-          `language`, and `metadata.notification_id`. This convention is not validated by the server.
+          `language`, and `metadata.notification_id`. Since v3.8.0 the server validates it (see
+          `POST /events`).
 
         Link: `content_id` is optional and returned as stored. If the linked content is no longer
         visible, `GET /content/{content_id}` answers `404`; the app then shows the message without
@@ -3215,30 +3275,38 @@ components:
           pattern: '^[a-z0-9_.:-]+$'
           example: "content_viewed"
           description: |
-            Analytics event name. Use `content_viewed` for a completed content consultation.
-            Names are lowercase tokens; they are not free-text labels.
+            Analytics event name. Names are lowercase tokens; they are not free-text labels.
+            `content_viewed`, `notification_opened`, `self_assessment_started`,
+            `center_search_performed`, `center_map_redirected` and the chatbot events follow the
+            conventions on `POST /events`.
         module:
           $ref: '#/components/schemas/AppEventModule'
         content_id:
           type: integer
           minimum: 1
           nullable: true
-          description: Required by convention for Content events; identifies the consulted public content item.
+          description: Required for `content_viewed`; identifies the consulted public content item.
         center_id:
           type: integer
           minimum: 1
           nullable: true
-          description: Optional CMS center related to the event.
+          description: |
+            CMS center related to the event; required for `center_map_redirected`. Must exist,
+            otherwise `422 VALIDATION_ERROR`.
         region_id:
           type: integer
           minimum: 1
           nullable: true
-          description: Optional CMS region related to the event.
+          description: |
+            Optional CMS region related to the event; for `center_search_performed`, the last region
+            filter applied. Must exist, otherwise `422 VALIDATION_ERROR`.
         province_id:
           type: integer
           minimum: 1
           nullable: true
-          description: Optional CMS province related to the event.
+          description: |
+            Optional CMS province related to the event; for `center_search_performed`, the last
+            province filter applied. Must exist, otherwise `422 VALIDATION_ERROR`.
         language:
           allOf:
           - $ref: '#/components/schemas/Language'
@@ -3257,10 +3325,15 @@ components:
             free-text health declarations, or full chatbot transcripts.
             Recommended maximum serialized size: 4 KB.
 
-            For `content_viewed`, use `duration_sec` as a non-negative integer number of elapsed
-            consultation seconds and optionally `completed` as a boolean when completion can be
-            determined. Emit at most one `content_viewed` event per consultation when it ends;
-            do not use it as a heartbeat.
+            The five dashboard events accept only the keys listed on `POST /events`:
+            - `content_viewed`: `duration_sec` (required integer, 0 or more) and optional
+              `completed` (boolean).
+            - `notification_opened`: `notification_id` (integer, 1 or more).
+            - `self_assessment_started`: `quiz_id` (UUID).
+            - `center_search_performed`: `used_text`, `used_filter`, `used_nearby` and
+              `opened_center` (booleans, at least one true).
+            - `center_map_redirected`: no metadata.
+            Any other key is rejected with `422 VALIDATION_ERROR`.
 
             For `module: chatbot`, send only `chat_run_id` (UUID), `scenario_id` (integer),
             `step_key` (string) and, for `chatbot_choice_selected` only, `choice_id` (integer).
