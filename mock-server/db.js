@@ -22,6 +22,9 @@ const db = {
   // Global app feedback (contract v3.6.0): one current row per device.
   // `platform` / `app_version` are copied from the session, for staff only.
   feedback: [],
+  // Analytics events accepted by POST /events (contract v3.8.0), newest last.
+  // Owner and time are the server's (token and clock), never the body's.
+  events: [],
   // In-app notifications (contract v3.7.0); `status` is internal — see
   // notificationsSeed.js.
   notifications: notificationsSeed.notifications,

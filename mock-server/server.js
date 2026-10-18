@@ -10,6 +10,7 @@ const assessmentRouter = require('./routes/assessment');
 const chatbotRouter = require('./routes/chatbot');
 const feedbackRouter = require('./routes/feedback');
 const notificationsRouter = require('./routes/notifications');
+const eventsRouter = require('./routes/events');
 
 const app = express();
 const BASE_PORT = Number(process.env.PORT || 4010);
@@ -18,9 +19,9 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v3.7.0)
+// Routes (see api-contract.yaml v3.8.0)
 //
-// Not implemented here: /events, /partner-links, and the
+// Not implemented here: /partner-links, /geo/referrals, and the
 // /media gateway that serves the files behind asset_url. The app does not
 // consume them yet; add them when that work starts.
 // ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ app.use('/assessment', assessmentRouter);
 app.use('/chatbot', chatbotRouter);
 app.use('/feedback', feedbackRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/events', eventsRouter);
 
 // A body over express.json's limit answers with the contract's 413 envelope
 // instead of Express's default HTML page.
