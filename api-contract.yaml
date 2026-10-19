@@ -3,6 +3,43 @@ info:
   title: App API
   description: |
 
+    **v3.11.0 - Centre referrals are the app's call and Maps taps**
+
+    Breaking: `POST /geo/referrals`, `GET /geo/referrals`, `GET`, `PATCH` and `DELETE
+    /geo/referrals/{id}` are removed, with the `CenterReferral`, `CreateCenterReferralRequest`,
+    `UpdateCenterReferralRequest` and `CenterReferralSource` schemas. The app never called them: a
+    referral (« orientation ») is now each tap on « Appeler » or « Ouvrir dans Maps » on a centre.
+    New `center_called` event of `POST /events` (`module: geo`, the `center_id`, no metadata), sent
+    when the user taps « Appeler »; `center_map_redirected` is unchanged and also counts as a
+    referral. The app does not send where the user came from: the server reads it from the same
+    session (a finished self-assessment, or a chatbot `open_centers` step, before the tap).
+
+    `center_search_performed`: `used_text`, `used_filter`, `used_nearby` and `opened_center` become
+    optional and are no longer counted (the centre finder only has filters); `metadata` may be
+    omitted. What the app sends today is still accepted.
+
+    **v3.10.0 - Featured partner links, phone-only links**
+
+    `GET /partner-links` items gain `is_featured` (boolean): staff mark at most four links
+    « Épinglé » in AdminWeb, and the app shows those apart, before the other partners. The server
+    refuses a fifth, so at most four items have `is_featured: true`.
+    A link now needs a website or a phone (or both), so `url` becomes nullable: it is `null` for a
+    link that only has a phone, and `phone_number` is then never `null`. Breaking for a client that
+    treats `url` as required: the app is not live yet, so no deployed client is affected.
+
+    **v3.9.0 - Partner link details**
+
+    `GET /partner-links` items gain four fields, and staff can now add and delete links in AdminWeb
+    instead of editing four fixed platforms:
+    - `partner_link_id`: stable id of the link.
+    - `logo_url`: absolute URL of the link's WebP logo, or `null` when it has none.
+    - `phone_label` and `phone_number`: an optional phone, both present or both `null`. Dial
+      `phone_number` with `tel:`; it may contain spaces, dots, dashes, brackets and a leading `+`.
+    `source_platform` is now `null` for links added by staff; it is kept for the four seeded links
+    only. Breaking only for a client that treats `source_platform` as required: the app is not
+    live yet, so no deployed client is affected. Use `partner_link_id`, not `source_platform`, to
+    identify a link. The list is ordered by `partner_link_id`.
+
     **v3.8.0 - Dashboard analytics events**
 
     Breaking for clients that send `content_viewed` or `notification_opened` loosely; additive
@@ -245,7 +282,7 @@ info:
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.8.0
+  version: 3.11.0
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -302,8 +339,9 @@ tags:
     administration remains internal to AdminWeb.
 - name: Partner links
   description: |
-    Curated external partner platform URLs (`cms.PartnerLink`). Read-only public referential.
-    Only platforms with a configured absolute URL are returned.
+    Partner links managed by MSPS staff in AdminWeb (`cms.PartnerLink`): a title, a website or a
+    phone (or both), optionally a WebP logo, and an « Épinglé » flag (four links at most).
+    Read-only public referential. Only links with a website or a phone are returned.
 
 paths:
 
@@ -978,262 +1016,6 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
 
-  /geo/referrals:
-    get:
-      tags: [Geolocation (App)]
-      summary: List center referrals
-      description: |
-        Anonymous mobile interaction data in the app schema (not public CMS/reference data).
-        Requires anonymous mobile bearer token from `POST /sessions`.
-
-        Results are always scoped to the JWT `device_uuid`. If the optional `device_uuid` query parameter is sent, it must match the JWT claim or the API returns `403 FORBIDDEN`.
-      security:
-      - MobileAnonymousBearer: []
-      parameters:
-      - name: device_uuid
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
-        description: Optional compatibility filter. If provided, it must match the JWT `device_uuid` claim. The API
-          always scopes results to the authenticated device.
-      - name: center_id
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-        description: Optional center filter applied within the authenticated device scope.
-      - name: source
-        in: query
-        required: false
-        schema:
-          $ref: '#/components/schemas/CenterReferralSource'
-        description: Optional referral source filter applied within the authenticated device scope.
-      responses:
-        '200':
-          description: Referrals list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CenterReferral'
-        '401':
-          $ref: '#/components/responses/ProtectedMobileUnauthorized'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    post:
-      tags: [Geolocation (App)]
-      summary: Create a center referral
-      description: |
-        CRUD table in app schema. Requires anonymous mobile bearer token from `POST /sessions`.
-
-        The request body `device_uuid` must match the JWT `device_uuid` claim. The server uses the JWT device as the authoritative owner of the created referral.
-
-        When `source` is `quiz`, `quiz_result_id` is required and must reference an assessment result owned by that same JWT device. For every other source, `quiz_result_id` must be null or omitted. An unknown result, or a result owned by another device, returns `404` and does not reveal whether another device owns it. `source` `quiz` with no result, or a non-quiz source with a result, returns `422`.
-      security:
-      - MobileAnonymousBearer: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateCenterReferralRequest'
-            example:
-              device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-              center_id: 120
-              quiz_result_id:
-              source: "map"
-              followed_up: false
-      responses:
-        '201':
-          description: Referral created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CenterReferral'
-              example:
-                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                center_id: 120
-                quiz_result_id:
-                source: "map"
-                followed_up: false
-        '401':
-          $ref: '#/components/responses/ProtectedMobileUnauthorized'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '404':
-          description: |
-            Returned when `source` is `quiz` and `quiz_result_id` does not reference an assessment
-            result owned by the authenticated device. The response does not reveal whether another
-            device owns the supplied result.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "NOT_FOUND"
-                message: "Assessment result not found."
-        '422':
-          description: |
-            Validation error. Inconsistent source and result combinations return `422`, including
-            `source` `quiz` with no result and a non-quiz source with a result.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /geo/referrals/{id}:
-    get:
-      tags: [Geolocation (App)]
-      summary: Get referral by id
-      description: |
-        Anonymous mobile interaction data in the app schema (not public CMS/reference data).
-        Requires anonymous mobile bearer token from `POST /sessions`.
-
-        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
-      security:
-      - MobileAnonymousBearer: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: Referral
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CenterReferral'
-        '401':
-          $ref: '#/components/responses/ProtectedMobileUnauthorized'
-        '404':
-          description: Referral not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    patch:
-      tags: [Geolocation (App)]
-      summary: Update referral
-      description: |
-        Requires anonymous mobile bearer token from `POST /sessions`.
-
-        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
-
-        If the resulting `source` is `quiz`, a `quiz_result_id` owned by that same device is required. If the resulting `source` is not `quiz`, `quiz_result_id` must be null, and changing away from `quiz` clears the stored result association. An unknown result, or a result owned by another device, returns `404` without revealing the other device. Invalid source/result combinations return `422`. Referral ownership itself remains the JWT device.
-      security:
-      - MobileAnonymousBearer: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCenterReferralRequest'
-            example:
-              source: "chatbot"
-              followed_up: true
-      responses:
-        '200':
-          description: Referral updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CenterReferral'
-              example:
-                id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                device_uuid: "550e8400-e29b-41d4-a716-446655440000"
-                center_id: 120
-                quiz_result_id:
-                source: "chatbot"
-                followed_up: true
-        '401':
-          $ref: '#/components/responses/ProtectedMobileUnauthorized'
-        '404':
-          description: |
-            Referral not found, or the referral belongs to another device.
-            Also returned when the resulting source is `quiz` and `quiz_result_id` does not
-            reference an assessment result owned by the authenticated device. The response does
-            not reveal whether another device owns the supplied result.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: "NOT_FOUND"
-                message: "Referral not found."
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '422':
-          description: |
-            Validation error. Invalid source/result combinations return `422`, including a quiz
-            source with no result and a non-quiz source with a result.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
-    delete:
-      tags: [Geolocation (App)]
-      summary: Delete referral
-      description: |
-        Requires anonymous mobile bearer token from `POST /sessions`.
-
-        The referral must belong to the JWT `device_uuid`. If the id exists but belongs to another device, the API returns `404 NOT_FOUND` to avoid revealing cross-device data.
-      security:
-      - MobileAnonymousBearer: []
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '204':
-          description: Referral deleted
-        '401':
-          $ref: '#/components/responses/ProtectedMobileUnauthorized'
-        '404':
-          description: Referral not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /events:
     post:
       tags: [Analytics]
@@ -1246,7 +1028,7 @@ paths:
         self-assessment events, chatbot events, notification opens, surveys,
         and referral-related analytics.
 
-        Dashboard events. The AdminWeb analytics dashboard counts the five events below. The server
+        Dashboard events. The AdminWeb analytics dashboard counts the six events below. The server
         checks each one exactly as described and answers `422 VALIDATION_ERROR` when a rule is not
         met, so an event the dashboard cannot use is never stored. Optional fields not listed
         (`region_id`, `province_id`, ...) are allowed. Other event names are free.
@@ -1272,18 +1054,28 @@ paths:
         - Sent once per attempt. Completion is already recorded by `POST /assessment/results`, so
           there is no `self_assessment_completed` event.
 
-        `center_search_performed`: the user searched for a screening centre.
+        `center_search_performed`: the user filtered the list of screening centres.
         - Sent once, when the user leaves the centre finder, and only if during that visit they
-          typed a search text, applied a filter (region, province, category, operator), tapped
-          "près de moi", or opened a centre's detail sheet. Opening the finder and leaving sends
-          nothing.
+          chose a filter (region, province, commune, operator). Opening the finder and leaving
+          sends nothing.
         - `module: geo`, no `channel`.
-        - `metadata` has exactly the four booleans `used_text`, `used_filter`, `used_nearby` and
-          `opened_center`, at least one of them `true`. No other key.
+        - `metadata` omitted, null, `{}`, or with only the optional booleans `used_text`,
+          `used_filter`, `used_nearby` and `opened_center`. They are accepted for the app's sake
+          and not counted. No other key.
         - Optional `region_id` / `province_id`: the last region or province filter applied.
 
-        `center_map_redirected`: the user opened a centre's location in Google Maps.
+        `center_map_redirected`: the user tapped « Ouvrir dans Maps » on a centre.
         - `module: geo`, no `channel`, the `center_id` of the centre. `metadata` omitted, null or `{}`.
+
+        `center_called`: the user tapped « Appeler » on a centre.
+        - `module: geo`, no `channel`, the `center_id` of the centre. `metadata` omitted, null or `{}`.
+
+        Both `center_map_redirected` and `center_called` are referrals (« orientations ») on the
+        Statistiques page, and a device that sent one counts as having looked for a centre. Do not
+        send where the user came from: the server reads it from the same session. The source is
+        `quiz` when a self-assessment was finished before the tap, `chatbot` when a chatbot step
+        with the `open_centers` action was reached before it (its `chatbot_action_triggered`
+        event), the later of the two when both happened, and `centres` otherwise.
 
         `center_id`, `region_id` and `province_id`, on any event, must exist; an unknown id returns
         `422 VALIDATION_ERROR` (`Invalid value for field 'center_id'.`).
@@ -1768,13 +1560,17 @@ paths:
   /partner-links:
     get:
       tags: [Partner links]
-      summary: List published partner platform links
+      summary: List published partner links
       description: |
-        Read-only curated partner URLs from the CMS schema.
-        Returns only platforms with a non-empty absolute URL, ordered SIHATI, SANTE_JEUNES, BILAHARAJ, OTHER.
+        Partner links that MSPS staff manage in AdminWeb (`cms.PartnerLink`). Read-only, public.
+        Returns only links with an absolute `http` or `https` website or a phone, ordered by
+        `partner_link_id` (the four seeded links first, then links in the order staff added them).
+        Links with `is_featured: true` (four at most) are shown apart, before the other partners;
+        they stay in the same list and order.
+        Responses are cached for up to 30 minutes, so an AdminWeb change can take that long to show.
       responses:
         '200':
-          description: Partner platform links
+          description: Partner links
           content:
             application/json:
               schema:
@@ -1782,12 +1578,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/PartnerLink'
               example:
-              - source_platform: "SIHATI"
+              - partner_link_id: 1
+                source_platform: "SIHATI"
                 display_label: "SIHATI"
                 url: "https://sihati.example.msps.test"
-              - source_platform: "SANTE_JEUNES"
-                display_label: "Sante Jeunes"
-                url: "https://santejeunes.example.msps.test"
+                logo_url: "https://media.example.msps.test/media/partner-links/logos/20261017/3f2a9c1e5b7d4e8f9a0b1c2d3e4f5a6b.webp"
+                phone_label: null
+                phone_number: null
+                is_featured: true
+              - partner_link_id: 100
+                source_platform: null
+                display_label: "Ligne d'écoute Hépatites"
+                url: null
+                logo_url: null
+                phone_label: "Ligne d'écoute"
+                phone_number: "0801 00 11 22"
+                is_featured: false
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -1905,8 +1711,10 @@ paths:
         from the start step are returned.
 
         `open_centers` only opens the centers module and `open_self_assessment` only opens the
-        self-assessment. Neither creates a center referral; a referral is created through
-        `POST /geo/referrals` only when the user selects a concrete center.
+        self-assessment. Neither is a referral: a referral is a tap on « Appeler » (`center_called`)
+        or « Ouvrir dans Maps » (`center_map_redirected`) on a centre. The
+        `chatbot_action_triggered` event of an `open_centers` step is how the server knows that a
+        referral that follows in the same session came from the chatbot.
 
         Returns 404 when no scenario is currently published. Chatbot usage is reported through
         `POST /events` (see the chatbot convention there).
@@ -2871,22 +2679,57 @@ components:
           example: 4
     PartnerLink:
       type: object
-      description: Server-configured outbound partner application link.
-      required: [source_platform, display_label, url]
+      description: Outbound partner link managed by MSPS staff in AdminWeb.
+      required: [partner_link_id, source_platform, display_label, url, logo_url, phone_label, phone_number, is_featured]
       properties:
+        partner_link_id:
+          type: integer
+          description: Stable id of the link. Use it to identify a link.
         source_platform:
           type: string
-          enum: [SIHATI, SANTE_JEUNES, BILAHARAJ, OTHER]
+          nullable: true
+          enum: [SIHATI, SANTE_JEUNES, BILAHARAJ, OTHER, null]
           description: |
-            Partner catalog key. `SIHATI`, `SANTE_JEUNES`, and `BILAHARAJ` identify known
-            partner apps; `OTHER` is a generic outbound link.
+            Catalog key of the four links seeded before v3.9.0. `null` for every link added by
+            staff. Kept for compatibility; do not rely on it.
         display_label:
           type: string
-          description: Localized label to show on the partner button.
+          maxLength: 200
+          description: Title to show on the partner button.
         url:
           type: string
           format: uri
-          description: Absolute HTTPS URL. Open it exactly as returned.
+          maxLength: 1000
+          nullable: true
+          description: |
+            Absolute `http` or `https` website. Open it exactly as returned. `null` when the link
+            only has a phone; `url` and `phone_number` are never both `null`.
+        logo_url:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            Absolute URL of the link's logo, always a WebP image (`image/webp`), served by
+            `GET /media`. `null` when the link has no logo: show a generic icon. A new upload
+            gets a new URL, so the app may cache the image by URL.
+        phone_label:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Label of the phone, for example "Ligne d'écoute". `null` exactly when `phone_number` is `null`.
+        phone_number:
+          type: string
+          maxLength: 30
+          nullable: true
+          description: |
+            Phone number as staff typed it: 3 to 20 digits, with only spaces, `.`, `-`, brackets
+            and a leading `+` between them. Dial it with `tel:` (spaces and punctuation are
+            ignored). `null` exactly when `phone_label` is `null`.
+        is_featured:
+          type: boolean
+          description: |
+            `true` for the links staff marked « Épinglé » (four at most): show them apart,
+            before the other partners.
 
     Region:
       type: object
@@ -3064,102 +2907,6 @@ components:
             value is unavailable.
           example: "1 Avenue Mohammed V, Rabat"
 
-    # ── Geolocation (App) ──────────────────────────────────
-
-    CenterReferralSource:
-      type: string
-      enum: [map, quiz, chatbot, notification]
-      description: |
-        How the user reached the referral. `map` is the geo map, `quiz` is a quiz result,
-        `chatbot` is a chatbot suggestion, and `notification` is an in-app notification (`GET /notifications`).
-        A referral is created only when a concrete center is selected; the chatbot actions
-        `open_centers` and `open_self_assessment` never create one by themselves.
-
-    CreateCenterReferralRequest:
-      type: object
-      required: [device_uuid, center_id, source]
-      properties:
-        device_uuid:
-          type: string
-          format: uuid
-          description: Must match the JWT `device_uuid` claim. The server uses the JWT claim as the authoritative
-            referral owner.
-        center_id:
-          type: integer
-          description: References center_id from the CMS centers referential.
-        quiz_result_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Required when source is `quiz`.
-            Must reference an assessment result owned by the authenticated JWT device.
-            Must be null or omitted for every non-quiz source.
-            An unknown result or a result owned by another device returns 404.
-            The response does not reveal whether another device owns the supplied result.
-        source:
-          $ref: '#/components/schemas/CenterReferralSource'
-        followed_up:
-          type: boolean
-          nullable: true
-          description: Optional. True when the user later indicated they followed up at the center.
-
-    UpdateCenterReferralRequest:
-      type: object
-      description: |
-        All fields are optional. Send only what needs to be updated.
-        If the resulting source is `quiz`, a valid owned `quiz_result_id` is required.
-        If the resulting source is not `quiz`, `quiz_result_id` must be null.
-        Changing away from `quiz` clears the existing result association.
-        Referral ownership remains the authenticated JWT device.
-      properties:
-        quiz_result_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Required when the resulting source is `quiz`, and must reference an assessment result
-            owned by the authenticated JWT device. Must be null when the resulting source is not
-            `quiz`; changing away from `quiz` clears the existing result association.
-            An unknown result or a result owned by another device returns 404.
-            Invalid source/result combinations return 422.
-            The response does not reveal whether another device owns the supplied result.
-        source:
-          $ref: '#/components/schemas/CenterReferralSource'
-        followed_up:
-          type: boolean
-          description: Whether the user later indicated they followed up at the center.
-
-    CenterReferral:
-      type: object
-      description: |
-        Referral owned by the authenticated anonymous device. Listing and id operations never
-        reveal another device's referral.
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Server-generated referral identifier.
-        device_uuid:
-          type: string
-          format: uuid
-          description: Owner device. Always the authenticated JWT `device_uuid`.
-        center_id:
-          type: integer
-          description: Referred CMS center.
-        quiz_result_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Assessment result that produced this referral when source is `quiz`; otherwise null.
-            The referenced result belongs to this referral's authenticated device.
-        source:
-          $ref: '#/components/schemas/CenterReferralSource'
-        followed_up:
-          type: boolean
-          description: Whether the user later indicated they followed up at the center.
-
     # ── Session ────────────────────────────────────────────
 
     CreateSessionRequest:
@@ -3277,8 +3024,8 @@ components:
           description: |
             Analytics event name. Names are lowercase tokens; they are not free-text labels.
             `content_viewed`, `notification_opened`, `self_assessment_started`,
-            `center_search_performed`, `center_map_redirected` and the chatbot events follow the
-            conventions on `POST /events`.
+            `center_search_performed`, `center_map_redirected`, `center_called` and the chatbot
+            events follow the conventions on `POST /events`.
         module:
           $ref: '#/components/schemas/AppEventModule'
         content_id:
@@ -3291,8 +3038,8 @@ components:
           minimum: 1
           nullable: true
           description: |
-            CMS center related to the event; required for `center_map_redirected`. Must exist,
-            otherwise `422 VALIDATION_ERROR`.
+            CMS center related to the event; required for `center_map_redirected` and
+            `center_called`. Must exist, otherwise `422 VALIDATION_ERROR`.
         region_id:
           type: integer
           minimum: 1
@@ -3325,14 +3072,14 @@ components:
             free-text health declarations, or full chatbot transcripts.
             Recommended maximum serialized size: 4 KB.
 
-            The five dashboard events accept only the keys listed on `POST /events`:
+            The six dashboard events accept only the keys listed on `POST /events`:
             - `content_viewed`: `duration_sec` (required integer, 0 or more) and optional
               `completed` (boolean).
             - `notification_opened`: `notification_id` (integer, 1 or more).
             - `self_assessment_started`: `quiz_id` (UUID).
-            - `center_search_performed`: `used_text`, `used_filter`, `used_nearby` and
-              `opened_center` (booleans, at least one true).
-            - `center_map_redirected`: no metadata.
+            - `center_search_performed`: optional `used_text`, `used_filter`, `used_nearby` and
+              `opened_center` (booleans, not counted).
+            - `center_map_redirected` and `center_called`: no metadata.
             Any other key is rejected with `422 VALIDATION_ERROR`.
 
             For `module: chatbot`, send only `chat_run_id` (UUID), `scenario_id` (integer),
@@ -3626,15 +3373,6 @@ x-mobile-schema-field-index:
     Center:
       schema: '#/components/schemas/Center'
       fields: [center_id, geo_code, name, region_id, province_id, category_id, commune_id, network, latitude, longitude, updated_at, is_active, commune_name, operator_type, phone, address_line]
-    CreateCenterReferralRequest:
-      schema: '#/components/schemas/CreateCenterReferralRequest'
-      fields: [device_uuid, center_id, quiz_result_id, source, followed_up]
-    UpdateCenterReferralRequest:
-      schema: '#/components/schemas/UpdateCenterReferralRequest'
-      fields: [quiz_result_id, source, followed_up]
-    CenterReferral:
-      schema: '#/components/schemas/CenterReferral'
-      fields: [id, device_uuid, center_id, quiz_result_id, source, followed_up]
     RecordAppEventRequest:
       schema: '#/components/schemas/RecordAppEventRequest'
       fields: [device_uuid, session_id, event_name, module, content_id, center_id, region_id, province_id, language, channel, metadata]
@@ -3664,7 +3402,7 @@ x-mobile-schema-field-index:
       fields: [content_id, rating]
     PartnerLink:
       schema: '#/components/schemas/PartnerLink'
-      fields: [source_platform, display_label, url]
+      fields: [partner_link_id, source_platform, display_label, url, logo_url, phone_label, phone_number, is_featured]
     ChatbotChoice:
       schema: '#/components/schemas/ChatbotChoice'
       fields: [choice_id, label, next_step_id]
