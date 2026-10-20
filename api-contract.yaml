@@ -3,6 +3,28 @@ info:
   title: App API
   description: |
 
+    **v3.11.1 - Missing field descriptions and examples**
+
+    Documentation-only. No route, field, rule or status code changes.
+    - Examples added where they were missing, captured from the API: every `/geo` read,
+      `GET /assessment/quiz`, `POST /assessment/results` (request, `201` and `404`).
+    - Field descriptions added where they were missing: the assessment schemas,
+      `SessionResponse.device_uuid` and `app_version`, `ChatbotStep.step_id`, the `language` and
+      `channel` of `RecordAppEventRequest` (when each is required), and every path id parameter.
+      The `active` filters of `/geo/communes`, `/geo/categories` and `/geo/centers` and the
+      `language` filter of `GET /content` now say what omitting them returns.
+    - `AgeRange` enum values are now quoted. Unquoted, `18_25`, `26_35` and `36_50` are read as the
+      numbers 1825, 2635 and 3650 by YAML 1.1 parsers (several OpenAPI code generators); the wire
+      values were always the strings.
+    - `Category.environment_type` is declared nullable in a way OpenAPI 3.0 tools read (it was a
+      `$ref` with a sibling `nullable`, which they ignore). The API already returned `null` for a
+      category without an environment type.
+    - `DeviceProfileResponse`, `Region`, `Province`, `Commune`, `Category`, `Center` and
+      `ErrorResponse` list every field as required: the API always sends them (nullable ones are
+      still nullable). The overview now says how to read `required` and `nullable`.
+    - Documents `400 Bad Request` (no body) for a body that is not valid JSON or a value that
+      cannot be read as its type, for example a `device_uuid` that is not a UUID.
+
     **v3.11.0 - Centre referrals are the app's call and Maps taps**
 
     Breaking: `POST /geo/referrals`, `GET /geo/referrals`, `GET`, `PATCH` and `DELETE
@@ -277,12 +299,24 @@ info:
     - Missing, malformed, signature-invalid, and cryptographically expired JWTs continue to use
       the existing authentication challenge.
 
+    **Required and nullable fields**
+
+    In a request schema, a field listed in `required` must be sent; any other field may be left
+    out. In a response schema, a field listed in `required` is always in the JSON. A field marked
+    `nullable` may be `null`; a field without it never is.
+
+    **Malformed requests**
+    A request body that is not valid JSON, or a value that cannot be read as its declared type
+    (for example `"abc"` for an integer or a `device_uuid` that is not a UUID), returns
+    `400 Bad Request` with no body, before any validation. Validation failures on well-formed JSON
+    return `422 VALIDATION_ERROR` as documented on each operation.
+
     **Public endpoints**
     Public endpoint classification is unchanged. Representative public routes include
     `POST /users`, `POST /sessions`, `GET /geo/*`, `GET /content/*`, and `GET /partner-links`.
     They do not validate persisted JTI state and remain public when an obsolete, superseded, or
     otherwise invalid persisted-session bearer token is attached.
-  version: 3.11.0
+  version: 3.11.1
 
 servers:
   # Added by API Auto Mocking Plugin
@@ -614,6 +648,7 @@ paths:
       - name: id
         in: path
         required: true
+        description: Session `id` returned by `POST /sessions`. Must be the session of the bearer token.
         schema:
           type: string
           format: uuid
@@ -712,6 +747,7 @@ paths:
       - name: region_id
         in: path
         required: true
+        description: Region identifier (`region_id` from `GET /geo/regions`).
         schema:
           type: integer
         example: 1
@@ -722,6 +758,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Region'
+              example:
+                region_id: 4
+                name: "Rabat-Salé-Kénitra"
+                region_code: "04"
+                is_active: true
         '404':
           description: Region not found
           content:
@@ -756,6 +797,17 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Province'
+              example:
+              - province_id: 41
+                region_id: 4
+                name: "Rabat"
+                province_code: "041"
+                is_active: true
+              - province_id: 42
+                region_id: 4
+                name: "Salé"
+                province_code: "042"
+                is_active: true
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -769,6 +821,7 @@ paths:
       - name: province_id
         in: path
         required: true
+        description: Province identifier (`province_id` from `GET /geo/provinces`).
         schema:
           type: integer
         example: 10
@@ -779,6 +832,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Province'
+              example:
+                province_id: 41
+                region_id: 4
+                name: "Rabat"
+                province_code: "041"
+                is_active: true
         '404':
           description: Province not found
           content:
@@ -815,7 +874,9 @@ paths:
         required: false
         schema:
           type: boolean
-        description: Filter by is_active.
+        description: |
+          Filter by `is_active`. When omitted, inactive rows are returned too, so the app sends
+          `active=true`.
       responses:
         '200':
           description: Communes list
@@ -825,6 +886,19 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Commune'
+              example:
+              - commune_id: 411
+                region_id: 4
+                province_id: 41
+                name: "Agdal-Riyad"
+                commune_code: "041.01"
+                is_active: true
+              - commune_id: 412
+                region_id: 4
+                province_id: 41
+                name: "Yacoub El Mansour"
+                commune_code: "041.02"
+                is_active: true
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -838,6 +912,7 @@ paths:
       - name: commune_id
         in: path
         required: true
+        description: Commune identifier (`commune_id` from `GET /geo/communes`).
         schema:
           type: integer
         example: 101
@@ -848,6 +923,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Commune'
+              example:
+                commune_id: 411
+                region_id: 4
+                province_id: 41
+                name: "Agdal-Riyad"
+                commune_code: "041.01"
+                is_active: true
         '404':
           description: Commune not found
           content:
@@ -872,7 +954,9 @@ paths:
         required: false
         schema:
           type: boolean
-        description: Filter by is_active.
+        description: |
+          Filter by `is_active`. When omitted, inactive rows are returned too, so the app sends
+          `active=true`.
       responses:
         '200':
           description: Categories list
@@ -882,6 +966,17 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Category'
+              example:
+              - category_id: 1
+                label: "Centre de santé urbain"
+                abbreviation: "CSU"
+                environment_type: "u"
+                is_active: true
+              - category_id: 3
+                label: "Centre de dépistage associatif"
+                abbreviation: null
+                environment_type: null
+                is_active: true
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -895,6 +990,7 @@ paths:
       - name: category_id
         in: path
         required: true
+        description: Category identifier (`category_id` from `GET /geo/categories`).
         schema:
           type: integer
         example: 3
@@ -905,6 +1001,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Category'
+              example:
+                category_id: 1
+                label: "Centre de santé urbain"
+                abbreviation: "CSU"
+                environment_type: "u"
+                is_active: true
         '404':
           description: Category not found
           content:
@@ -953,7 +1055,9 @@ paths:
         required: false
         schema:
           type: boolean
-        description: Filter by is_active.
+        description: |
+          Filter by `is_active`. When omitted, inactive rows are returned too, so the app sends
+          `active=true`.
       - name: operator_type
         in: query
         required: false
@@ -969,6 +1073,39 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Center'
+              example:
+              - center_id: 120
+                geo_code: "B-041-0007"
+                name: "Centre de santé Agdal"
+                region_id: 4
+                province_id: 41
+                category_id: 1
+                commune_id: 411
+                network: 2
+                operator_type: "MSPS"
+                latitude: 34.000123
+                longitude: -6.849812
+                updated_at: "2026-09-30T10:00:00+00:00"
+                is_active: true
+                commune_name: "Agdal-Riyad"
+                phone: "+212 5 37 77 00 00"
+                address_line: "12 Avenue de France, Agdal, Rabat"
+              - center_id: 121
+                geo_code: null
+                name: "ALCS Rabat"
+                region_id: 4
+                province_id: 41
+                category_id: 3
+                commune_id: 412
+                network: null
+                operator_type: "ONG"
+                latitude: 33.990555
+                longitude: -6.870111
+                updated_at: "2026-10-02T08:30:00+00:00"
+                is_active: true
+                commune_name: "Yacoub El Mansour"
+                phone: "05 37 70 70 70"
+                address_line: null
         '422':
           description: Invalid operator_type filter
           content:
@@ -991,6 +1128,7 @@ paths:
       - name: center_id
         in: path
         required: true
+        description: Centre identifier (`center_id` from `GET /geo/centers`).
         schema:
           type: integer
         example: 120
@@ -1001,6 +1139,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Center'
+              example:
+                center_id: 120
+                geo_code: "B-041-0007"
+                name: "Centre de santé Agdal"
+                region_id: 4
+                province_id: 41
+                category_id: 1
+                commune_id: 411
+                network: 2
+                operator_type: "MSPS"
+                latitude: 34.000123
+                longitude: -6.849812
+                updated_at: "2026-09-30T10:00:00+00:00"
+                is_active: true
+                commune_name: "Agdal-Riyad"
+                phone: "+212 5 37 77 00 00"
+                address_line: "12 Avenue de France, Agdal, Rabat"
         '404':
           description: Center not found
           content:
@@ -1233,7 +1388,9 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/Language'
-        description: Filter by content language.
+        description: |
+          Filter by content language. When omitted, French and Arabic items are mixed, so the app
+          sends its language.
       - name: thematic_id
         in: query
         required: false
@@ -1359,6 +1516,7 @@ paths:
       - name: content_id
         in: path
         required: true
+        description: Content identifier (`content_id` from `GET /content`).
         schema:
           type: integer
           minimum: 1
@@ -1455,6 +1613,7 @@ paths:
       - name: content_id
         in: path
         required: true
+        description: Content identifier (`content_id` from `GET /content`).
         schema:
           type: integer
           minimum: 1
@@ -1511,6 +1670,7 @@ paths:
       - name: content_id
         in: path
         required: true
+        description: Content identifier (`content_id` from `GET /content`).
         schema:
           type: integer
           minimum: 1
@@ -1626,6 +1786,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssessmentQuizResponse'
+              example:
+                quiz_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4a01"
+                version: 3
+                title: "Évaluer mon risque"
+                questions:
+                - question_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4b01"
+                  text: "Vous êtes :"
+                  options:
+                  - option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c01"
+                    label: "Un(e) jeune de moins de 25 ans"
+                  - option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c02"
+                    label: "Une personne de la population générale"
+                - question_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4b02"
+                  text: "Avez-vous eu un rapport sexuel non protégé au cours des 12 derniers mois ?"
+                  options:
+                  - option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c03"
+                    label: "Oui"
+                  - option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c04"
+                    label: "Non"
         '401':
           $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
@@ -1662,6 +1841,13 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitAssessmentResultRequest'
+            example:
+              quiz_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4a01"
+              answers:
+              - question_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4b01"
+                option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c01"
+              - question_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4b02"
+                option_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4c03"
       responses:
         '201':
           description: Completed assessment result
@@ -1669,6 +1855,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssessmentResultResponse'
+              example:
+                result_id: "01a15602-ed05-7deb-ad8e-0965aed8dc9f"
+                quiz_id: "0199f3a2-7c41-7b10-9a55-3c2d1e0f4a01"
+                quiz_version: 3
+                risk_level: "HIGH"
+                orientation: "Un dépistage est recommandé. Trouvez un centre près de chez vous."
+                recommend_center: true
+                completed_at: "2026-10-19T21:13:14.7570742+00:00"
         '401':
           $ref: '#/components/responses/ProtectedMobileUnauthorized'
         '404':
@@ -1677,6 +1871,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: NOT_FOUND
+                message: The assessment quiz is not currently published.
         '422':
           description: The submitted answer set is incomplete or inconsistent
           content:
@@ -2104,7 +2301,7 @@ components:
 
     AgeRange:
       type: string
-      enum: [less_18, 18_25, 26_35, 36_50, over_50]
+      enum: ["less_18", "18_25", "26_35", "36_50", "over_50"]
       description: |
         Self-declared age band collected at anonymous device-profile creation or update.
         `less_18` is under 18, `18_25` is 18 to 25 inclusive, `26_35` is 26 to 35, `36_50` is 36
@@ -2237,6 +2434,7 @@ components:
       description: |
         Anonymous device profile. Profile reads return it only to the authenticated anonymous JWT
         whose `device_uuid` matches this profile; registration also returns the newly created profile.
+      required: [device_uuid, user_type, age_range, gender, family_situation, language, is_pregnant, fcm_token, created_at]
       properties:
         device_uuid:
           type: string
@@ -2290,10 +2488,12 @@ components:
         option_id:
           type: string
           format: uuid
+          description: Answer identifier. Send it as `answers[].option_id` in `POST /assessment/results`.
         label:
           type: string
           minLength: 1
           maxLength: 500
+          description: Answer text in the authenticated device profile language.
 
     AssessmentQuestionResponse:
       type: object
@@ -2303,13 +2503,16 @@ components:
         question_id:
           type: string
           format: uuid
+          description: Question identifier. Send it as `answers[].question_id` in `POST /assessment/results`.
         text:
           type: string
           minLength: 1
           maxLength: 1000
+          description: Question text in the authenticated device profile language.
         options:
           type: array
           minItems: 2
+          description: Possible answers in display order. The user picks exactly one.
           items:
             $ref: '#/components/schemas/AssessmentAnswerOptionResponse'
 
@@ -2321,15 +2524,21 @@ components:
         quiz_id:
           type: string
           format: uuid
+          description: |
+            Published questionnaire identifier. Send it in `POST /assessment/results` and as
+            `metadata.quiz_id` of the `self_assessment_started` event.
         version:
           type: integer
           minimum: 1
+          description: Questionnaire version, for information.
         title:
           type: string
           minLength: 1
           maxLength: 300
+          description: Questionnaire title in the authenticated device profile language.
         questions:
           type: array
+          description: Questions in display order.
           minItems: 1
           maxItems: 100
           items:
@@ -2343,9 +2552,11 @@ components:
         question_id:
           type: string
           format: uuid
+          description: A `question_id` of the questionnaire, at most once per submission.
         option_id:
           type: string
           format: uuid
+          description: One of that question's `option_id` values.
 
     SubmitAssessmentResultRequest:
       type: object
@@ -2355,8 +2566,10 @@ components:
         quiz_id:
           type: string
           format: uuid
+          description: The `quiz_id` returned by `GET /assessment/quiz`.
         answers:
           type: array
+          description: Exactly one answer for every question of the questionnaire, in any order.
           minItems: 1
           maxItems: 100
           items:
@@ -2377,23 +2590,29 @@ components:
         result_id:
           type: string
           format: uuid
+          description: Identifier of the stored result.
         quiz_id:
           type: string
           format: uuid
+          description: Questionnaire that was answered.
         quiz_version:
           type: integer
           minimum: 1
+          description: Version of that questionnaire.
         risk_level:
           $ref: '#/components/schemas/AssessmentRiskLevel'
         orientation:
           type: string
           minLength: 1
           maxLength: 2000
+          description: Advice text to display, in the authenticated device profile language.
         recommend_center:
           type: boolean
+          description: When true, the app offers to open the centre finder.
         completed_at:
           type: string
           format: date-time
+          description: Server UTC time at which the result was stored.
 
     # ── Content ────────────────────────────────────────────
 
@@ -2734,7 +2953,7 @@ components:
     Region:
       type: object
       description: CMS region used to filter provinces, communes, and centers.
-      required: [region_id, name, is_active]
+      required: [region_id, region_code, name, is_active]
       properties:
         region_id:
           type: integer
@@ -2753,7 +2972,7 @@ components:
     Province:
       type: object
       description: CMS province belonging to one region.
-      required: [province_id, region_id, name, is_active]
+      required: [province_id, region_id, province_code, name, is_active]
       properties:
         province_id:
           type: integer
@@ -2775,7 +2994,7 @@ components:
     Commune:
       type: object
       description: CMS commune belonging to one province and region.
-      required: [commune_id, region_id, province_id, name, is_active]
+      required: [commune_id, province_id, region_id, commune_code, name, is_active]
       properties:
         commune_id:
           type: integer
@@ -2805,7 +3024,7 @@ components:
     Category:
       type: object
       description: CMS center category (service type) used to filter centers.
-      required: [category_id, label, is_active]
+      required: [category_id, label, abbreviation, environment_type, is_active]
       properties:
         category_id:
           type: integer
@@ -2818,7 +3037,8 @@ components:
           nullable: true
           description: Optional short code for compact UI. Null when none is configured.
         environment_type:
-          $ref: '#/components/schemas/EnvironmentType'
+          allOf:
+            - $ref: '#/components/schemas/EnvironmentType'
           nullable: true
           description: Optional environment classification of this category.
         is_active:
@@ -2833,7 +3053,7 @@ components:
 
     Center:
       type: object
-      required: [center_id, name, region_id, province_id, category_id, is_active, operator_type]
+      required: [center_id, geo_code, name, region_id, province_id, commune_id, commune_name, category_id, operator_type, network, address_line, phone, latitude, longitude, is_active, updated_at]
       properties:
         center_id:
           type: integer
@@ -2963,6 +3183,7 @@ components:
         device_uuid:
           type: string
           format: uuid
+          description: Device of this session, as sent to `POST /sessions`.
         started_at:
           type: string
           format: date-time
@@ -2978,6 +3199,7 @@ components:
           $ref: '#/components/schemas/Platform'
         app_version:
           type: string
+          description: App version sent to `POST /sessions`, returned unchanged.
         access_token:
           type: string
           description: |
@@ -3058,10 +3280,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/Language'
           nullable: true
+          description: |
+            Language of what the user saw. Required for `content_viewed` (the content language),
+            `notification_opened` (the notification language) and `self_assessment_started` (the app
+            language); optional otherwise.
         channel:
           allOf:
           - $ref: '#/components/schemas/AppEventChannel'
           nullable: true
+          description: |
+            How the subject was consumed. Required for `content_viewed` (from `content_type`: TEXT and
+            EVENT -> `text`, BANNER -> `banner`, VIDEO -> `video`, AUDIO -> `audio`) and
+            `notification_opened` (`notification`). Must be omitted or null for
+            `self_assessment_started`, the `geo` events and the chatbot events.
         metadata:
           type: object
           additionalProperties: true
@@ -3125,6 +3356,7 @@ components:
         step_id:
           type: integer
           minimum: 1
+          description: Step identifier. `start_step_id` and `choices[].next_step_id` point to it.
         step_key:
           type: string
           minLength: 1
@@ -3304,6 +3536,7 @@ components:
       description: |
         Sole public error envelope. `error` is a stable machine code; `message` is a
         human-readable English explanation. Internal stack traces are never included.
+      required: [error, message]
       properties:
         error:
           type: string
