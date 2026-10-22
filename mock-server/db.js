@@ -151,7 +151,6 @@ const db = {
         address_line: null,
       },
     ],
-    referrals: [],
   },
 
   // ── Content (cms schema, contract v2.5.1) ────────────────────────────────
@@ -553,7 +552,6 @@ const VALID = {
   family_situation: ['married', 'single', 'prefer_not_to_say'],
   language: ['fr', 'ar'],
   platform: ['android', 'ios'],
-  center_referral_source: ['map', 'quiz', 'chatbot', 'notification'],
   // Thematic disease taxonomy, contract v2.6.0. camelCase — neither the
   // lowercase snake_case of most enums nor the UPPERCASE of `content_type`.
   disease: [

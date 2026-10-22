@@ -19,9 +19,9 @@ const MAX_PORT_TRIES = 10;
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Routes (see api-contract.yaml v3.8.0)
+// Routes (see api-contract.yaml v3.11.1)
 //
-// Not implemented here: /partner-links, /geo/referrals, and the
+// Not implemented here: /partner-links, and the
 // /media gateway that serves the files behind asset_url. The app does not
 // consume them yet; add them when that work starts.
 // ---------------------------------------------------------------------------

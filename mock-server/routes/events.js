@@ -1,10 +1,10 @@
-// routes/events.js — mobile analytics events (contract v3.8.0)
+// routes/events.js — mobile analytics events (contract v3.11.1)
 //
 // POST /events needs MobileAnonymousBearer. The device and session are the
 // ones in the token; a body that carries a different `device_uuid` or
 // `session_id` is refused with 403 rather than overwritten.
 //
-// The AdminWeb dashboard counts ten events (five dashboard events and five
+// The AdminWeb dashboard counts eleven events (six dashboard events and five
 // chatbot events). Each one has an exact shape, checked here as the real API
 // does: an event the dashboard could not use is refused with 422 instead of
 // being stored and counted as zero. Every other event name is stored as is.
@@ -88,24 +88,29 @@ function conventionError(e) {
         "self_assessment_started events must use module 'self_assessment', no channel, a language, and metadata with only quiz_id (UUID).";
     }
     case 'center_search_performed': {
+      // v3.11.0: the four flags became optional and are no longer counted;
+      // metadata may be omitted. They are still accepted, as booleans only.
       const flags = ['used_text', 'used_filter', 'used_nearby', 'opened_center'];
       const ok =
         e.module === 'geo' &&
         isAbsent(e.channel) &&
-        hasOnlyKeys(m, flags) &&
-        flags.every(k => typeof m[k] === 'boolean') &&
-        flags.some(k => m[k] === true);
+        (isAbsent(m) ||
+          (hasOnlyKeys(m, [], flags) && Object.values(m).every(v => typeof v === 'boolean')));
       return ok ? null :
-        "center_search_performed events must use module 'geo', no channel, and metadata with exactly used_text, used_filter, used_nearby and opened_center (booleans, at least one true).";
+        "center_search_performed events must use module 'geo', no channel, and metadata omitted or with only the optional booleans used_text, used_filter, used_nearby and opened_center.";
     }
-    case 'center_map_redirected': {
+    // Both are referrals (« orientations »): a tap on « Ouvrir dans Maps » or on
+    // « Appeler ». The server works out where the user came from (quiz, chatbot
+    // or the centres list) from the same session; the app never sends it.
+    case 'center_map_redirected':
+    case 'center_called': {
       const ok =
         e.module === 'geo' &&
         isAbsent(e.channel) &&
         isInt(e.center_id, 1) &&
         (isAbsent(m) || (isPlainObject(m) && Object.keys(m).length === 0));
       return ok ? null :
-        "center_map_redirected events must use module 'geo', no channel, a center_id, and no metadata.";
+        `${e.event_name} events must use module 'geo', no channel, a center_id, and no metadata.`;
     }
     default:
       break;

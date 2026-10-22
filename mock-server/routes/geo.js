@@ -1,11 +1,12 @@
 // routes/geo.js
 //
-// CMS referentials: read-only (GET)
-// App tables: CRUD (referrals)
+// CMS referentials: read-only (GET).
+//
+// /geo/referrals was removed in contract v3.11.0: a referral is now a tap on
+// « Appeler » or « Ouvrir dans Maps », reported through POST /events.
 
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
-const { db, VALID, validate, requireFields, error, parseOptionalBoolean, requireBearer } = require('../db');
+const { db, VALID, error, parseOptionalBoolean } = require('../db');
 
 const router = express.Router();
 
@@ -115,67 +116,6 @@ router.get('/centers/:center_id', (req, res) => {
   const center = db.geo.centers.find(c => c.center_id === id);
   if (!center) return error(res, 404, 'NOT_FOUND', 'Center not found.');
   return res.json(center);
-});
-
-// ---------------------------------------------------------------------------
-// App table: CenterReferral (CRUD)
-// Protected: MobileAnonymousBearer (contract v2.1.0)
-// ---------------------------------------------------------------------------
-
-router.get('/referrals', requireBearer, (req, res) => {
-  const deviceUuid = req.query.device_uuid;
-  const out = deviceUuid ? db.geo.referrals.filter(r => r.device_uuid === deviceUuid) : db.geo.referrals;
-  return res.json(out);
-});
-
-router.post('/referrals', requireBearer, (req, res) => {
-  const body = req.body || {};
-
-  const missing = requireFields(body, ['device_uuid', 'center_id', 'source']);
-  if (missing) return error(res, 422, 'VALIDATION_ERROR', missing);
-
-  const invalid = validate(body, { source: VALID.center_referral_source });
-  if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
-
-  const referral = {
-    id: uuidv4(),
-    device_uuid: body.device_uuid,
-    center_id: body.center_id,
-    quiz_result_id: body.quiz_result_id ?? null,
-    source: body.source,
-    followed_up: body.followed_up ?? false,
-  };
-
-  db.geo.referrals.push(referral);
-  return res.status(201).json(referral);
-});
-
-router.get('/referrals/:id', requireBearer, (req, res) => {
-  const referral = db.geo.referrals.find(r => r.id === req.params.id);
-  if (!referral) return error(res, 404, 'NOT_FOUND', 'Referral not found');
-  return res.json(referral);
-});
-
-router.patch('/referrals/:id', requireBearer, (req, res) => {
-  const referral = db.geo.referrals.find(r => r.id === req.params.id);
-  if (!referral) return error(res, 404, 'NOT_FOUND', 'Referral not found');
-
-  const invalid = validate(req.body || {}, { source: VALID.center_referral_source });
-  if (invalid) return error(res, 422, 'VALIDATION_ERROR', invalid);
-
-  const allowed = ['quiz_result_id', 'source', 'followed_up'];
-  for (const field of allowed) {
-    if (req.body[field] !== undefined) referral[field] = req.body[field];
-  }
-
-  return res.json(referral);
-});
-
-router.delete('/referrals/:id', requireBearer, (req, res) => {
-  const idx = db.geo.referrals.findIndex(r => r.id === req.params.id);
-  if (idx === -1) return error(res, 404, 'NOT_FOUND', 'Referral not found');
-  db.geo.referrals.splice(idx, 1);
-  return res.status(204).send();
 });
 
 module.exports = router;
