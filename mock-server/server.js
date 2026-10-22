@@ -11,6 +11,7 @@ const chatbotRouter = require('./routes/chatbot');
 const feedbackRouter = require('./routes/feedback');
 const notificationsRouter = require('./routes/notifications');
 const eventsRouter = require('./routes/events');
+const partnerLinksRouter = require('./routes/partnerLinks');
 
 const app = express();
 const BASE_PORT = Number(process.env.PORT || 4010);
@@ -21,9 +22,8 @@ app.use(express.json());
 // ---------------------------------------------------------------------------
 // Routes (see api-contract.yaml v3.11.1)
 //
-// Not implemented here: /partner-links, and the
-// /media gateway that serves the files behind asset_url. The app does not
-// consume them yet; add them when that work starts.
+// Not implemented here: the /media gateway that serves the files behind
+// asset_url (the mock's logos and covers are plain external URLs).
 // ---------------------------------------------------------------------------
 
 app.use('/users', usersRouter);
@@ -35,6 +35,7 @@ app.use('/chatbot', chatbotRouter);
 app.use('/feedback', feedbackRouter);
 app.use('/notifications', notificationsRouter);
 app.use('/events', eventsRouter);
+app.use('/partner-links', partnerLinksRouter);
 
 // A body over express.json's limit answers with the contract's 413 envelope
 // instead of Express's default HTML page.

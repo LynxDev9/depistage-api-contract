@@ -3,6 +3,7 @@
 const assessmentSeed = require('./assessmentSeed');
 const chatbotSeed = require('./chatbotSeed');
 const notificationsSeed = require('./notificationsSeed');
+const partnerLinksSeed = require('./partnerLinksSeed');
 
 const db = {
   users: [],
@@ -19,6 +20,9 @@ const db = {
   chatbot: {
     scenario: chatbotSeed.scenario,
   },
+  // Partner links managed in AdminWeb (contract v3.9.0 / v3.10.0); see
+  // partnerLinksSeed.js.
+  partnerLinks: partnerLinksSeed.partnerLinks,
   // Global app feedback (contract v3.6.0): one current row per device.
   // `platform` / `app_version` are copied from the session, for staff only.
   feedback: [],
@@ -651,6 +655,25 @@ for (const item of db.content.items) {
       throw new Error(`Seed error: notification ${n.notification_id} has an unknown type.`);
     }
   }
+}
+
+// The partner links must respect the contract's invariants, or the app would
+// receive rows it is entitled to reject.
+{
+  const ids = new Set();
+  let featured = 0;
+  for (const l of db.partnerLinks) {
+    if (ids.has(l.partner_link_id)) throw new Error(`Seed error: duplicate partner link ${l.partner_link_id}.`);
+    ids.add(l.partner_link_id);
+    if ((l.phone_label === null) !== (l.phone_number === null)) {
+      throw new Error(`Seed error: partner link ${l.partner_link_id} needs phone_label and phone_number together.`);
+    }
+    if (l.url !== null && !/^https?:\/\//.test(l.url)) {
+      throw new Error(`Seed error: partner link ${l.partner_link_id} url must be absolute http(s).`);
+    }
+    if (l.is_featured) featured++;
+  }
+  if (featured > 4) throw new Error('Seed error: at most four partner links can be featured.');
 }
 
 // operator_type is required on Center (v3.0.0). A seed row without it would
