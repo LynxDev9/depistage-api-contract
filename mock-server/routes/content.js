@@ -25,6 +25,20 @@ function mediaUrl(req, value) {
   return `${req.protocol}://${req.get('host')}${value}`;
 }
 
+// A content item without a custom thumbnail falls back to the server's standard
+// one (contract, `GET /content`): a TEXT gets the standard text thumbnail, so an
+// article always has a cover to show; an AUDIO gets the standard audio one. A
+// VIDEO has a generated frame or nothing, a BANNER is its own image (no
+// fallback), and an EVENT must have a custom cover (see isMobileVisible).
+// External placeholders stand in for the real gateway's `/media/defaults/*`.
+const STANDARD_THUMBNAIL = {
+  TEXT: 'https://placehold.co/640x360/2a8b94/ffffff.png?text=Article',
+  AUDIO: 'https://placehold.co/640x360/7b4a9c/ffffff.png?text=Audio',
+};
+
+const thumbnailFor = (row) =>
+  row.thumbnail_url || STANDARD_THUMBNAIL[row.content_type] || null;
+
 // Projects a stored row onto the contract's `ContentListItem`. Field names match
 // the contract one-for-one; `status` is the only internal field and is dropped
 // here rather than spread, so it can never reach the wire.
@@ -39,7 +53,7 @@ function toListItem(req, row) {
     language: row.language,
     is_highlighted: row.is_highlighted,
     asset_url: mediaUrl(req, row.asset_url),
-    thumbnail_url: mediaUrl(req, row.thumbnail_url),
+    thumbnail_url: mediaUrl(req, thumbnailFor(row)),
     duration_seconds: row.duration_seconds,
     published_at: row.published_at,
   };
